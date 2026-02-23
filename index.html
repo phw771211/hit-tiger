@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>象棋吃墩 PVP v30.9 - 比牌動畫修正版</title>
+    <title>象棋吃墩 PVP v31.0 - 同步強化修正版</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
@@ -42,7 +42,7 @@
         .slot-2 { top: 200px; left: 50%; transform: translateX(-50%) rotate(180deg); }
         .slot-3 { right: 160px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
         
-        .slot .revealed-card { width: 40px; height: 60px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; border: 2px solid #333; }
+        .slot .revealed-card { width: 40px; height: 60px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; border: 2px solid #333; color: black; }
         .slot .revealed-card.red-p { color: var(--red); border-color: var(--red); }
         .slot .hidden-win { background: #555 !important; border-color: #333 !important; color: transparent !important; }
         
@@ -233,24 +233,30 @@
         }
         if (data.type === 'CONFIRM_OK') {
             hasConfirmed[data.idx] = true;
+            // 房主發送過來的跟牌資料，確保客端 tableCards 也是最新的
+            if (data.cards) tableCards[data.idx] = data.cards; 
             if (data.idx === myIndex) { confirmedIDs = [...selectedIDs]; selectedIDs = []; state = "WAITING"; }
             const uiIdx = (data.idx - myIndex + 4) % 4;
             document.getElementById(`slot-${uiIdx}`).innerHTML = Array(data.cardCount).fill('<div class="card back" style="width:30px; height:45px;"></div>').join('');
             render();
         }
         if (data.type === 'FORCE_BATTLE') {
-            state = "ANIMATING"; hideToast(); tableCards = data.tableCards; 
+            state = "ANIMATING"; hideToast(); 
+            tableCards = data.tableCards; // 徹底覆蓋客端的 tableCards，解決白牌問題
             for(let i=0; i<4; i++) {
                 const ids = tableCards[i].map(c => c.id);
                 hands[i] = hands[i].filter(card => !ids.includes(card.id));
             }
             trickHistory[data.winIdx].push(...data.wonCards);
-            // 修正同步墩數紀錄
-            roundWinnerRecords = data.roundWinnerRecords;
+            roundWinnerRecords = data.roundWinnerRecords; // 房主發來的紀錄必須同步，解決墩數加總問題
             runBattleAnimation(data.winIdx, data.callerIdx);
         }
         if (data.type === 'PLAY_ACTION' && isHost) serverReceiveAction(senderIdx, data.cards);
-        if (data.type === 'SETTLE_ALL') { balances = data.balances; showSettle(data.diffs, data.counts, data.lastWinner); }
+        if (data.type === 'SETTLE_ALL') { 
+            balances = data.balances; 
+            roundWinnerRecords = data.roundWinnerRecords || roundWinnerRecords; // 最後結算再同步一次
+            showSettle(data.diffs, data.counts, data.lastWinner); 
+        }
         if (data.type === 'MSG') showToast(data.msg);
         if (data.type === 'TIMER') document.getElementById('timer-box').innerText = data.time;
         if (data.type === 'REQ_NEXT' && isHost) serverStartRound();
@@ -282,7 +288,8 @@
     function serverReceiveAction(idx, cards) {
         if (hasConfirmed[idx]) return;
         tableCards[idx] = cards; hasConfirmed[idx] = true;
-        broadcast({type: 'CONFIRM_OK', idx, cardCount: cards.length});
+        // 房主確認收牌後，將該玩家出的牌也廣播出去，確保客端知道出了什麼
+        broadcast({type: 'CONFIRM_OK', idx, cardCount: cards.length, cards: cards});
         if (currentCall === null) {
             let pat = getPattern(cards);
             currentCall = {...pat, count: cards.length, callerIdx: idx};
@@ -300,7 +307,6 @@
             }
         }
         roundWinnerRecords.push(winIdx);
-        // 重要：將 roundWinnerRecords 同步給所有客戶端
         broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: [...tableCards[winIdx]], roundWinnerRecords});
         setTimeout(() => {
             if (hands[0].length === 0) serverFinalSettle(winIdx);
@@ -312,7 +318,7 @@
         let t = 30; clearInterval(timerInterval);
         timerInterval = setInterval(() => {
             t--; broadcast({type: 'TIMER', time: t});
-            if (t <= 0) { clearInterval(timerInterval); for(let i=0; i<4; i++) if(!hasConfirmed[i]) serverReceiveAction(i, [hands[i][0]]); }
+            if (t <= 0) { clearInterval(timerInterval); for(let i=0; i<4; i++) if(!hasConfirmed[i]) serverReceiveAction(i, [hands[i][0] || CHESS_DATA[0]]); }
         }, 1000);
     }
 
@@ -329,7 +335,7 @@
             diffs[lastWinnerIdx] = -totalFlow;
         }
         for(let i=0; i<4; i++) balances[i] += diffs[i];
-        broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalCounts, lastWinner: names[lastWinnerIdx]});
+        broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalCounts, lastWinner: names[lastWinnerIdx], roundWinnerRecords});
     }
 
     function sortHand() { hands[myIndex].sort((a,b) => (b.v !== a.v) ? b.v - a.v : (b.r ? -1 : 1)); }
@@ -376,11 +382,15 @@
     async function runBattleAnimation(winIdx, callerIdx) {
         let curMax = -1;
         for(let i=0; i<4; i++) {
-            let p = (callerIdx + i) % 4, sIdx = (p - myIndex + 4) % 4, pPat = getPattern(tableCards[p]);
-            // 修正：當 i===0（即叫牌者/首家）時，應強制 reveal 為 true，確保牌張顯示文字
-            let reveal = (i === 0) || (tableCards[p].length === currentCall.count && pPat && pPat.pwr > curMax);
+            let p = (callerIdx + i) % 4, sIdx = (p - myIndex + 4) % 4;
+            // 這裡確保從 tableCards 讀取最新數據
+            let pCards = tableCards[p];
+            if (!pCards || pCards.length === 0) continue; 
+            let pPat = getPattern(pCards);
+            let reveal = (i === 0) || (pCards.length === currentCall.count && pPat && pPat.pwr > curMax);
             if (reveal) curMax = pPat ? pPat.pwr : curMax;
-            document.getElementById(`slot-${sIdx}`).innerHTML = tableCards[p].map(c => `<div class="revealed-card ${reveal ? (c.r?'red-p':'') : 'hidden-win'}">${reveal ? c.n : ''}</div>`).join('');
+            
+            document.getElementById(`slot-${sIdx}`).innerHTML = pCards.map(c => `<div class="revealed-card ${reveal ? (c.r?'red-p':'') : 'hidden-win'}">${reveal ? c.n : ''}</div>`).join('');
             await new Promise(r => setTimeout(r, 700));
         }
         await new Promise(r => setTimeout(r, 1500));
