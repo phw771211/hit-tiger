@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>象棋吃墩 PVP - 穩定 8 墩結算版</title>
+    <title>象棋吃墩 PVP - 穩定結算回滾版</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
@@ -108,7 +108,7 @@
     let balances = [5000, 5000, 5000, 5000], hands = [[],[],[],[]], trickHistory = [[],[],[],[]];
     let selectedIDs = [], confirmedIDs = [], state = "IDLE", turn = 0, currentCall = null;
     let tableCards = [[],[],[],[]], hasConfirmed = [false, false, false, false], timerInterval = null, names = ["","","",""];
-    let roundWinnerRecords = []; // 關鍵紀錄
+    let roundWinners = []; // 存儲每一輪贏家的索引
 
     const rid = (new URLSearchParams(window.location.search)).get('room');
     if (rid) { document.getElementById('btn-host').style.display = 'none'; document.getElementById('btn-join').style.display = 'block'; }
@@ -234,7 +234,7 @@
         let tempHands = [[],[],[],[]];
         for(let r=0; r<8; r++) for(let i=0; i<4; i++) tempHands[(startTurn+i)%4].push(deck.pop());
         broadcast({type: 'DISTRIBUTE', hands: tempHands});
-        roundWinnerRecords = []; // 每一局重新清空
+        roundWinners = [];
         turn = startTurn; serverSyncLocal();
     }
 
@@ -261,14 +261,12 @@
             }
         }
         
-        // 【關鍵邏輯】：無論如何先記錄這一輪的贏家
-        roundWinnerRecords.push(winIdx);
-        
+        roundWinners.push(winIdx); // 記錄本輪贏家
         broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: [...tableCards[winIdx]]});
         
+        // 核心回滾邏輯：房主檢查手牌是否清空來觸發結算
         setTimeout(() => {
-            // 【強化結算判定】：以紀錄的長度為準，一旦滿 8 墩就結算
-            if (roundWinnerRecords.length >= 8) {
+            if (hands[0].length === 0) {
                 serverFinalSettle(winIdx);
             } else {
                 turn = winIdx; currentCall = null; hasConfirmed = [false, false, false, false]; serverSyncLocal();
@@ -287,16 +285,12 @@
     function serverFinalSettle(lastWinnerIdx) {
         let finalCounts = [0,0,0,0], diffs = [0,0,0,0], totalFlow = 0;
         
-        // 【核心統計】：完全依照 roundWinnerRecords 來算墩數，保證總數必為 8
-        roundWinnerRecords.forEach(idx => {
-            if (idx >= 0 && idx < 4) finalCounts[idx]++;
-        });
-
-        // 雙重校驗：如果統計異常（雖然不應發生），強制補足 8 墩
+        // 依照 roundWinners 記錄統計墩數
+        roundWinners.forEach(idx => finalCounts[idx]++);
+        
+        // 修正墩數總和必為 8
         const sum = finalCounts.reduce((a, b) => a + b, 0);
-        if (sum !== 8) {
-            finalCounts[lastWinnerIdx] += (8 - sum);
-        }
+        if (sum < 8) finalCounts[lastWinnerIdx] += (8 - sum);
 
         let slamWinner = finalCounts.findIndex(c => c === 8);
         if (slamWinner !== -1) {
@@ -311,14 +305,7 @@
             diffs[lastWinnerIdx] = -totalFlow;
         }
         for(let i=0; i<4; i++) balances[i] += diffs[i];
-        
-        broadcast({
-            type: 'SETTLE_ALL', 
-            balances, 
-            diffs, 
-            counts: finalCounts, 
-            lastWinner: names[lastWinnerIdx]
-        });
+        broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalCounts, lastWinner: names[lastWinnerIdx]});
     }
 
     function sortHand() { hands[myIndex].sort((a,b) => (b.v !== a.v) ? b.v - a.v : (b.r ? -1 : 1)); }
