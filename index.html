@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>象棋吃墩 PVP - 結算修正版</title>
+    <title>象棋吃墩 PVP - 結算觸發修正版</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
@@ -71,16 +71,11 @@
 <body>
 
 <button id="rule-btn" onclick="toggleRules(true)">📖 遊戲規則</button>
-
 <div id="rule-modal" onclick="toggleRules(false)">
     <div class="rule-content" onclick="event.stopPropagation()">
         <h3 style="color:var(--gold); text-align:center; margin-top:0;">🎴 象棋吃墩規則</h3>
-        <p><b>【象棋吃墩：叫牌與牌型】</b><br>
-        由擲骰決定首家。合法牌型包括單張、對子、同子（多兵/卒），及特定順子（將士象、車馬包系列）。順子僅需包含基本三元素，可混入重複牌達成 X 順子，如「俥瑪瑪砲」為四順子，最高支援六順子。</p>
-        <p><b>【跟牌勝負】</b><br>
-        必須跟隨叫牌的張數與牌型，如果手牌無法湊出該牌型，則需要任意出牌來湊出一樣的張數。同牌型時，點數大勝過點數小，且紅色大於黑色牌（如紅兵對大於黑卒對）。數字大者得墩，該輪得墩者獲下輪控牌權。</p>
-        <p><b>【結算與全壘打】</b><br>
-        每局共 8 墩，5 墩為基準點，每墩 20 分。玩家須想辦法在最後一輪叫牌時獲勝。最終回合贏家為結算者。結算時，其餘玩家低於 5 墩的部分需支付分給結算者。若有人達成 8 墩全壘打，其餘三家需支付雙倍金額。</p>
+        <p><b>【象棋吃墩：叫牌與牌型】</b><br>每局 8 墩。由擲骰決定首家，需跟牌型。數字大者得墩，紅色 > 黑色。</p>
+        <p><b>【結算】</b><br>5 墩為準。最後一輪贏家為結算者，其餘低於 5 墩者需付分。8 墩全壘打則翻倍。</p>
         <button onclick="toggleRules(false)" style="width:100%; margin-top:10px;">回到牌桌</button>
     </div>
 </div>
@@ -101,7 +96,7 @@
             <div id="player-list" style="margin:15px 0; text-align:left;"></div>
             <input type="text" id="copy-url" readonly onclick="this.select();" style="width:100%; padding:5px; font-size:10px; background:#34495e; color:white; border:none;">
             <button id="btn-roll" onclick="hostRollDice()" style="margin-top:20px; display:none; width:100%;">🎲 擲骰決定首家</button>
-            <div id="wait-host-msg" class="waiting-text" style="display:none; color:#aaa; font-style:italic; font-size:14px; margin-top:15px; animation: blink 1.5s infinite;">⏳ 等待房主擲骰中...</div>
+            <div id="wait-host-msg" style="display:none; color:#aaa; font-style:italic; font-size:14px; margin-top:15px;">⏳ 等待房主擲骰中...</div>
         </div>
     </div>
 </div>
@@ -276,9 +271,10 @@
         let startTurn = (forcedStart !== undefined) ? forcedStart : Math.floor(Math.random() * 4);
         let tempHands = [[],[],[],[]];
         for(let r=0; r<8; r++) for(let i=0; i<4; i++) tempHands[(startTurn+i)%4].push(deck.pop());
+        
+        roundWinnerRecords = []; // 重置
         broadcast({type: 'DISTRIBUTE', hands: tempHands});
         turn = startTurn; 
-        roundWinnerRecords = []; // 每一局開始絕對清空
         serverSyncLocal();
     }
 
@@ -308,15 +304,15 @@
             }
         }
         
-        // 關鍵：在房主計算完當下立即將勝家推入紀錄
         roundWinnerRecords.push(winIdx);
-        
-        // 廣播這場戰鬥與最新的紀錄列表
+        const currentTotalTricks = roundWinnerRecords.length;
+
+        // 立即廣播戰鬥
         broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: [...tableCards[winIdx]], roundWinnerRecords: [...roundWinnerRecords]});
         
+        // 核心修正：結算檢查不再放在 setTimeout 內部
         setTimeout(() => {
-            // 改用 roundWinnerRecords 的長度判定結算，這能保證紀錄滿 8 筆才結算
-            if (roundWinnerRecords.length === 8) {
+            if (currentTotalTricks >= 8) {
                 serverFinalSettle(winIdx);
             } else {
                 turn = winIdx; 
@@ -331,19 +327,19 @@
         let t = 30; clearInterval(timerInterval);
         timerInterval = setInterval(() => {
             t--; broadcast({type: 'TIMER', time: t});
-            if (t <= 0) { clearInterval(timerInterval); for(let i=0; i<4; i++) if(!hasConfirmed[i]) serverReceiveAction(i, [hands[i][0] || CHESS_DATA[0]]); }
+            if (t <= 0) { 
+                clearInterval(timerInterval); 
+                for(let i=0; i<4; i++) if(!hasConfirmed[i]) serverReceiveAction(i, [hands[i][0] || CHESS_DATA[0]]); 
+            }
         }, 1000);
     }
 
     function serverFinalSettle(lastWinnerIdx) {
         let finalCounts = [0,0,0,0], diffs = [0,0,0,0], totalFlow = 0;
         
-        // 絕對安全的統計方式：遍歷 roundWinnerRecords
-        roundWinnerRecords.forEach(idx => {
-            if (idx >= 0 && idx < 4) finalCounts[idx]++;
-        });
-
-        // 雙重校驗：如果總和不等於 8，將誤差歸給最後贏家
+        // 從紀錄中統計，確保總和必為 8
+        roundWinnerRecords.forEach(idx => { if(idx >=0 && idx <4) finalCounts[idx]++; });
+        
         const sum = finalCounts.reduce((a, b) => a + b, 0);
         if (sum !== 8) finalCounts[lastWinnerIdx] += (8 - sum);
 
@@ -410,7 +406,6 @@
             let pPat = getPattern(pCards);
             let reveal = (i === 0) || (pCards.length === currentCall.count && pPat && pPat.pwr > curMax);
             if (reveal) curMax = pPat ? pPat.pwr : curMax;
-            
             document.getElementById(`slot-${sIdx}`).innerHTML = pCards.map(c => `<div class="revealed-card ${reveal ? (c.r?'red-p':'') : 'hidden-win'}">${reveal ? c.n : ''}</div>`).join('');
             await new Promise(r => setTimeout(r, 700));
         }
