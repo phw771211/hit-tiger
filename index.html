@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>象棋吃墩 PVP v30.8 - 文字正向與墩數修正版</title>
+    <title>象棋吃墩 PVP v30.9 - 比牌動畫修正版</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
@@ -22,7 +22,6 @@
         .p-2 { top: 10px; left: 50%; transform: translateX(-50%) rotate(180deg); }
         .p-3 { right: -140px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
 
-        /* 關鍵修正：修正文字轉向，讓所有玩家視角的文字都是正的 */
         .info-container { transform: rotate(0deg); }
         .p-1 .info-container { transform: rotate(-90deg); }
         .p-2 .info-container { transform: rotate(-180deg); }
@@ -142,7 +141,7 @@
 
     let peer = null, connections = [], hostConn = null, isHost = false, myIndex = -1;
     let balances = [5000, 5000, 5000, 5000], hands = [[],[],[],[]], trickHistory = [[],[],[],[]];
-    let roundWinnerRecords = []; // 新增：精確記錄每墩誰贏了，解決小數點問題
+    let roundWinnerRecords = []; 
     let selectedIDs = [], confirmedIDs = [], state = "IDLE", turn = 0, currentCall = null;
     let tableCards = [[],[],[],[]], hasConfirmed = [false, false, false, false], timerInterval = null, names = ["","","",""];
 
@@ -246,6 +245,8 @@
                 hands[i] = hands[i].filter(card => !ids.includes(card.id));
             }
             trickHistory[data.winIdx].push(...data.wonCards);
+            // 修正同步墩數紀錄
+            roundWinnerRecords = data.roundWinnerRecords;
             runBattleAnimation(data.winIdx, data.callerIdx);
         }
         if (data.type === 'PLAY_ACTION' && isHost) serverReceiveAction(senderIdx, data.cards);
@@ -272,7 +273,7 @@
         let tempHands = [[],[],[],[]];
         for(let r=0; r<8; r++) for(let i=0; i<4; i++) tempHands[(startTurn+i)%4].push(deck.pop());
         broadcast({type: 'DISTRIBUTE', hands: tempHands});
-        turn = startTurn; roundWinnerRecords = []; // 重置勝局紀錄
+        turn = startTurn; roundWinnerRecords = []; 
         serverSyncLocal();
     }
 
@@ -298,8 +299,9 @@
                 if (pPat.pwr > maxPwr) { maxPwr = pPat.pwr; winIdx = i; }
             }
         }
-        roundWinnerRecords.push(winIdx); // 重要：直接紀錄贏家索引，一墩就是一次
-        broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: [...tableCards[winIdx]]});
+        roundWinnerRecords.push(winIdx);
+        // 重要：將 roundWinnerRecords 同步給所有客戶端
+        broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: [...tableCards[winIdx]], roundWinnerRecords});
         setTimeout(() => {
             if (hands[0].length === 0) serverFinalSettle(winIdx);
             else { turn = winIdx; currentCall = null; hasConfirmed = [false, false, false, false]; serverSyncLocal(); }
@@ -316,7 +318,6 @@
 
     function serverFinalSettle(lastWinnerIdx) {
         let finalCounts = [0,0,0,0], diffs = [0,0,0,0], totalFlow = 0;
-        // 修正：從勝局紀錄精確計算整數墩數
         roundWinnerRecords.forEach(idx => finalCounts[idx]++);
 
         let slamWinner = finalCounts.findIndex(c => c === 8);
@@ -376,6 +377,7 @@
         let curMax = -1;
         for(let i=0; i<4; i++) {
             let p = (callerIdx + i) % 4, sIdx = (p - myIndex + 4) % 4, pPat = getPattern(tableCards[p]);
+            // 修正：當 i===0（即叫牌者/首家）時，應強制 reveal 為 true，確保牌張顯示文字
             let reveal = (i === 0) || (tableCards[p].length === currentCall.count && pPat && pPat.pwr > curMax);
             if (reveal) curMax = pPat ? pPat.pwr : curMax;
             document.getElementById(`slot-${sIdx}`).innerHTML = tableCards[p].map(c => `<div class="revealed-card ${reveal ? (c.r?'red-p':'') : 'hidden-win'}">${reveal ? c.n : ''}</div>`).join('');
