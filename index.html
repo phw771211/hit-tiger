@@ -3,82 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>象棋吃墩 PVP - 結算觸發修正版</title>
+    <title>象棋吃墩 PVP - 穩定 8 墩結算版</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
         * { box-sizing: border-box; }
         body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
-        
         .table-container { width: 700px; height: 700px; display: flex; justify-content: center; align-items: center; }
         @media (max-width: 750px) { .table-container { transform: scale(0.5); } }
         @media (max-width: 400px) { .table-container { transform: scale(0.42); } }
-
         .table { width: 700px; height: 700px; background: var(--table); border: 12px solid #5d4037; border-radius: 50%; position: relative; box-shadow: inset 0 0 100px #000; display: none; }
-        
         .player { position: absolute; text-align: center; width: 360px; z-index: 10; padding: 10px; border-radius: 15px; }
         .p-0 { bottom: 10px; left: 50%; transform: translateX(-50%); }
         .p-1 { left: -140px; top: 50%; transform: translateY(-50%) rotate(90deg); }
         .p-2 { top: 10px; left: 50%; transform: translateX(-50%) rotate(180deg); }
         .p-3 { right: -140px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
-
         .info-container { transform: rotate(0deg); }
         .p-1 .info-container { transform: rotate(-90deg); }
         .p-2 .info-container { transform: rotate(-180deg); }
         .p-3 .info-container { transform: rotate(90deg); }
-        
         .active-glow { background: rgba(241, 196, 15, 0.3); box-shadow: 0 0 25px var(--gold); }
         .hand { display: flex; gap: 5px; justify-content: center; min-height: 80px; margin-top: 5px; flex-wrap: nowrap; width: 100%; }
-        
         .card { width: 40px; height: 60px; background: white; color: black; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; border: 2px solid #333; cursor: pointer; transition: transform 0.2s; flex-shrink: 0; }
         .card.red-p { color: var(--red); border-color: var(--red); }
         .card.selected { transform: translateY(-18px); border: 3px solid var(--gold); box-shadow: 0 5px 15px var(--gold); }
         .card.confirmed { opacity: 0.4; filter: grayscale(0.8); transform: translateY(-12px); cursor: default; }
         .card.back { background: var(--card-back) !important; color: transparent !important; border-color: #fff; }
-        
         .slot { position: absolute; width: 150px; height: 110px; display: flex; justify-content: center; align-items: center; gap: 4px; background: rgba(0,0,0,0.15); border: 2px dashed rgba(255,255,255,0.2); border-radius: 10px; pointer-events: none; }
         .slot-0 { bottom: 200px; left: 50%; transform: translateX(-50%); }
         .slot-1 { left: 160px; top: 50%; transform: translateY(-50%) rotate(90deg); }
         .slot-2 { top: 200px; left: 50%; transform: translateX(-50%) rotate(180deg); }
         .slot-3 { right: 160px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
-        
         .slot .revealed-card { width: 40px; height: 60px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; border: 2px solid #333; color: black; }
         .slot .revealed-card.red-p { color: var(--red); border-color: var(--red); }
         .slot .hidden-win { background: #555 !important; border-color: #333 !important; color: transparent !important; }
-        
         .tricks { display: flex; gap: 2px; height: 25px; justify-content: center; margin-bottom: 5px; flex-wrap: wrap; max-width: 250px; margin: 0 auto; }
         .trick-tag { width: 22px; height: 22px; background: #fff; color: #000; font-size: 13px; font-weight: bold; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid #333; }
         .trick-tag.red-p { color: var(--red); border-color: var(--red); }
-
-        #rule-btn { position: fixed; top: 20px; left: 20px; padding: 10px 20px; background: rgba(0,0,0,0.5); border: 1px solid var(--gold); color: var(--gold); border-radius: 20px; cursor: pointer; z-index: 1000; }
-        #rule-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 20000; padding: 20px; }
-        .rule-content { background: #2c3e50; border: 2px solid var(--gold); padding: 25px; border-radius: 15px; max-width: 500px; line-height: 1.6; text-align: left; }
-
         #timer-box { position:absolute; top:20px; right:20px; font-size:36px; font-weight:bold; color:#e74c3c; background:rgba(0,0,0,0.6); padding:5px 20px; border-radius:10px; display:none; z-index: 10002; }
         #toast { position:fixed; top:20%; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.9); color:var(--gold); padding:15px 30px; border:2px solid var(--gold); border-radius:10px; display:none; z-index:99999; font-size:20px; font-weight:bold; text-align:center; }
-
         #lobby, #settlement-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 10001; }
         .panel { background: #2c3e50; padding: 30px; border-radius: 20px; border: 3px solid var(--gold); width: 320px; text-align: center; }
-        
         button { padding: 12px 25px; background: #e67e22; color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: bold; font-size: 16px; margin: 5px 0; }
-        button:disabled { background: #7f8c8d; cursor: not-allowed; }
         input#nick-in { padding: 12px; width: 100%; border-radius: 10px; border: 2px solid var(--gold); background: #34495e; color: white; margin-bottom: 20px; }
-        
         .controls { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 100; }
         #main-btn { padding: 15px 50px; font-size: 20px; }
     </style>
 </head>
 <body>
-
-<button id="rule-btn" onclick="toggleRules(true)">📖 遊戲規則</button>
-<div id="rule-modal" onclick="toggleRules(false)">
-    <div class="rule-content" onclick="event.stopPropagation()">
-        <h3 style="color:var(--gold); text-align:center; margin-top:0;">🎴 象棋吃墩規則</h3>
-        <p><b>【象棋吃墩：叫牌與牌型】</b><br>每局 8 墩。由擲骰決定首家，需跟牌型。數字大者得墩，紅色 > 黑色。</p>
-        <p><b>【結算】</b><br>5 墩為準。最後一輪贏家為結算者，其餘低於 5 墩者需付分。8 墩全壘打則翻倍。</p>
-        <button onclick="toggleRules(false)" style="width:100%; margin-top:10px;">回到牌桌</button>
-    </div>
-</div>
 
 <div id="timer-box">30</div>
 <div id="toast"></div>
@@ -96,7 +68,6 @@
             <div id="player-list" style="margin:15px 0; text-align:left;"></div>
             <input type="text" id="copy-url" readonly onclick="this.select();" style="width:100%; padding:5px; font-size:10px; background:#34495e; color:white; border:none;">
             <button id="btn-roll" onclick="hostRollDice()" style="margin-top:20px; display:none; width:100%;">🎲 擲骰決定首家</button>
-            <div id="wait-host-msg" style="display:none; color:#aaa; font-style:italic; font-size:14px; margin-top:15px;">⏳ 等待房主擲骰中...</div>
         </div>
     </div>
 </div>
@@ -112,11 +83,10 @@
 
 <div class="table-container">
     <div class="table" id="main-table">
-        <div id="area-0" class="player p-0"><div id="t-0" class="tricks"></div><div id="h-0" class="hand"></div><div class="info-container"><b id="name-0">南</b><div id="status-0" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-0">$5000</div></div></div>
-        <div id="area-1" class="player p-1"><div class="info-container"><b id="name-1">西</b><div id="status-1" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-1">$5000</div></div><div id="h-1" class="hand"></div><div id="t-1" class="tricks"></div></div>
-        <div id="area-2" class="player p-2"><div class="info-container"><b id="name-2">北</b><div id="status-2" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-2">$5000</div></div><div id="h-2" class="hand"></div><div id="t-2" class="tricks"></div></div>
-        <div id="area-3" class="player p-3"><div class="info-container"><b id="name-3">東</b><div id="status-3" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-3">$5000</div></div><div id="h-3" class="hand"></div><div id="t-3" class="tricks"></div></div>
-        
+        <div id="area-0" class="player p-0"><div id="t-0" class="tricks"></div><div id="h-0" class="hand"></div><div class="info-container"><b id="name-0"></b><div id="status-0" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-0"></div></div></div>
+        <div id="area-1" class="player p-1"><div class="info-container"><b id="name-1"></b><div id="status-1" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-1"></div></div><div id="h-1" class="hand"></div><div id="t-1" class="tricks"></div></div>
+        <div id="area-2" class="player p-2"><div class="info-container"><b id="name-2"></b><div id="status-2" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-2"></div></div><div id="h-2" class="hand"></div><div id="t-2" class="tricks"></div></div>
+        <div id="area-3" class="player p-3"><div class="info-container"><b id="name-3"></b><div id="status-3" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-3"></div></div><div id="h-3" class="hand"></div><div id="t-3" class="tricks"></div></div>
         <div id="slot-0" class="slot slot-0"></div><div id="slot-1" class="slot slot-1"></div>
         <div id="slot-2" class="slot slot-2"></div><div id="slot-3" class="slot slot-3"></div>
     </div>
@@ -136,9 +106,9 @@
 
     let peer = null, connections = [], hostConn = null, isHost = false, myIndex = -1;
     let balances = [5000, 5000, 5000, 5000], hands = [[],[],[],[]], trickHistory = [[],[],[],[]];
-    let roundWinnerRecords = []; 
     let selectedIDs = [], confirmedIDs = [], state = "IDLE", turn = 0, currentCall = null;
     let tableCards = [[],[],[],[]], hasConfirmed = [false, false, false, false], timerInterval = null, names = ["","","",""];
+    let roundWinnerRecords = []; // 關鍵紀錄
 
     const rid = (new URLSearchParams(window.location.search)).get('room');
     if (rid) { document.getElementById('btn-host').style.display = 'none'; document.getElementById('btn-join').style.display = 'block'; }
@@ -204,12 +174,11 @@
             document.getElementById('lobby-status').style.display = 'block';
             document.getElementById('player-count').innerText = `(${data.count}/4)`;
             document.getElementById('player-list').innerHTML = names.filter(n => n !== "").map(n => `<div>• ${n}</div>`).join('');
-            if (!isHost && data.count === 4) document.getElementById('wait-host-msg').style.display = 'block';
         }
         if (data.type === 'INIT') {
             myIndex = data.index; document.getElementById('lobby').style.display = 'none';
             document.getElementById('main-table').style.display = 'block';
-            resetRoundState(); render();
+            render();
         }
         if (data.type === 'DISTRIBUTE') {
             document.getElementById('settlement-overlay').style.display = 'none';
@@ -220,36 +189,29 @@
             if (currentCall === null) { state = (turn === myIndex) ? "MY_TURN" : "IDLE"; hideToast(); }
             else { 
                 state = hasConfirmed[myIndex] ? "WAITING" : "FOLLOWING"; 
-                let callName = (currentCall.count === 2 && currentCall.name === "對子") ? "一對" : `${currentCall.count}張${currentCall.name}`;
-                showPersistentToast(`📢 目前牌型：${callName}`); 
+                showPersistentToast(`📢 目前牌型：${currentCall.count}張${currentCall.name}`); 
             }
             document.getElementById('timer-box').style.display = currentCall ? 'block' : 'none';
             render();
         }
         if (data.type === 'CONFIRM_OK') {
             hasConfirmed[data.idx] = true;
-            if (data.cards) tableCards[data.idx] = data.cards; 
             if (data.idx === myIndex) { confirmedIDs = [...selectedIDs]; selectedIDs = []; state = "WAITING"; }
             const uiIdx = (data.idx - myIndex + 4) % 4;
             document.getElementById(`slot-${uiIdx}`).innerHTML = Array(data.cardCount).fill('<div class="card back" style="width:30px; height:45px;"></div>').join('');
             render();
         }
         if (data.type === 'FORCE_BATTLE') {
-            state = "ANIMATING"; hideToast(); 
-            tableCards = data.tableCards; 
+            state = "ANIMATING"; hideToast(); tableCards = data.tableCards; 
             for(let i=0; i<4; i++) {
                 const ids = tableCards[i].map(c => c.id);
                 hands[i] = hands[i].filter(card => !ids.includes(card.id));
             }
             trickHistory[data.winIdx].push(...data.wonCards);
-            roundWinnerRecords = data.roundWinnerRecords; 
             runBattleAnimation(data.winIdx, data.callerIdx);
         }
         if (data.type === 'PLAY_ACTION' && isHost) serverReceiveAction(senderIdx, data.cards);
-        if (data.type === 'SETTLE_ALL') { 
-            balances = data.balances; 
-            showSettle(data.diffs, data.counts, data.lastWinner); 
-        }
+        if (data.type === 'SETTLE_ALL') { balances = data.balances; showSettle(data.diffs, data.counts, data.lastWinner); }
         if (data.type === 'MSG') showToast(data.msg);
         if (data.type === 'TIMER') document.getElementById('timer-box').innerText = data.time;
         if (data.type === 'REQ_NEXT' && isHost) serverStartRound();
@@ -271,11 +233,9 @@
         let startTurn = (forcedStart !== undefined) ? forcedStart : Math.floor(Math.random() * 4);
         let tempHands = [[],[],[],[]];
         for(let r=0; r<8; r++) for(let i=0; i<4; i++) tempHands[(startTurn+i)%4].push(deck.pop());
-        
-        roundWinnerRecords = []; // 重置
         broadcast({type: 'DISTRIBUTE', hands: tempHands});
-        turn = startTurn; 
-        serverSyncLocal();
+        roundWinnerRecords = []; // 每一局重新清空
+        turn = startTurn; serverSyncLocal();
     }
 
     function serverSyncLocal() { broadcast({type: 'SYNC', turn, currentCall, hasConfirmed}); }
@@ -283,16 +243,13 @@
     function serverReceiveAction(idx, cards) {
         if (hasConfirmed[idx]) return;
         tableCards[idx] = cards; hasConfirmed[idx] = true;
-        broadcast({type: 'CONFIRM_OK', idx, cardCount: cards.length, cards: cards});
+        broadcast({type: 'CONFIRM_OK', idx, cardCount: cards.length});
         if (currentCall === null) {
             let pat = getPattern(cards);
             currentCall = {...pat, count: cards.length, callerIdx: idx};
             startTimerHost(); serverSyncLocal();
         } 
-        if (hasConfirmed.every(v => v === true)) { 
-            clearInterval(timerInterval); 
-            serverProcessBattle(); 
-        }
+        if (hasConfirmed.every(v => v === true)) { clearInterval(timerInterval); serverProcessBattle(); }
     }
 
     function serverProcessBattle() {
@@ -304,21 +261,17 @@
             }
         }
         
+        // 【關鍵邏輯】：無論如何先記錄這一輪的贏家
         roundWinnerRecords.push(winIdx);
-        const currentTotalTricks = roundWinnerRecords.length;
-
-        // 立即廣播戰鬥
-        broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: [...tableCards[winIdx]], roundWinnerRecords: [...roundWinnerRecords]});
         
-        // 核心修正：結算檢查不再放在 setTimeout 內部
+        broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: [...tableCards[winIdx]]});
+        
         setTimeout(() => {
-            if (currentTotalTricks >= 8) {
+            // 【強化結算判定】：以紀錄的長度為準，一旦滿 8 墩就結算
+            if (roundWinnerRecords.length >= 8) {
                 serverFinalSettle(winIdx);
             } else {
-                turn = winIdx; 
-                currentCall = null; 
-                hasConfirmed = [false, false, false, false]; 
-                serverSyncLocal();
+                turn = winIdx; currentCall = null; hasConfirmed = [false, false, false, false]; serverSyncLocal();
             }
         }, 4000);
     }
@@ -327,33 +280,45 @@
         let t = 30; clearInterval(timerInterval);
         timerInterval = setInterval(() => {
             t--; broadcast({type: 'TIMER', time: t});
-            if (t <= 0) { 
-                clearInterval(timerInterval); 
-                for(let i=0; i<4; i++) if(!hasConfirmed[i]) serverReceiveAction(i, [hands[i][0] || CHESS_DATA[0]]); 
-            }
+            if (t <= 0) { clearInterval(timerInterval); for(let i=0; i<4; i++) if(!hasConfirmed[i]) serverReceiveAction(i, [hands[i][0]]); }
         }, 1000);
     }
 
     function serverFinalSettle(lastWinnerIdx) {
         let finalCounts = [0,0,0,0], diffs = [0,0,0,0], totalFlow = 0;
         
-        // 從紀錄中統計，確保總和必為 8
-        roundWinnerRecords.forEach(idx => { if(idx >=0 && idx <4) finalCounts[idx]++; });
-        
+        // 【核心統計】：完全依照 roundWinnerRecords 來算墩數，保證總數必為 8
+        roundWinnerRecords.forEach(idx => {
+            if (idx >= 0 && idx < 4) finalCounts[idx]++;
+        });
+
+        // 雙重校驗：如果統計異常（雖然不應發生），強制補足 8 墩
         const sum = finalCounts.reduce((a, b) => a + b, 0);
-        if (sum !== 8) finalCounts[lastWinnerIdx] += (8 - sum);
+        if (sum !== 8) {
+            finalCounts[lastWinnerIdx] += (8 - sum);
+        }
 
         let slamWinner = finalCounts.findIndex(c => c === 8);
         if (slamWinner !== -1) {
             for(let i=0; i<4; i++) if(i !== slamWinner) { diffs[i] = -120; totalFlow += 120; }
             diffs[slamWinner] = totalFlow;
         } else {
-            for(let i=0; i<4; i++) if (i !== lastWinnerIdx) { let d = (finalCounts[i] - 5) * 20; diffs[i] = d; totalFlow += d; }
+            for(let i=0; i<4; i++) if (i !== lastWinnerIdx) { 
+                let d = (finalCounts[i] - 5) * 20; 
+                diffs[i] = d; 
+                totalFlow += d; 
+            }
             diffs[lastWinnerIdx] = -totalFlow;
         }
         for(let i=0; i<4; i++) balances[i] += diffs[i];
         
-        broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalCounts, lastWinner: names[lastWinnerIdx]});
+        broadcast({
+            type: 'SETTLE_ALL', 
+            balances, 
+            diffs, 
+            counts: finalCounts, 
+            lastWinner: names[lastWinnerIdx]
+        });
     }
 
     function sortHand() { hands[myIndex].sort((a,b) => (b.v !== a.v) ? b.v - a.v : (b.r ? -1 : 1)); }
@@ -370,7 +335,6 @@
         const req = currentCall ? currentCall.count : 0;
         btn.disabled = !((state === "MY_TURN" && selectedIDs.length > 0) || (state === "FOLLOWING" && selectedIDs.length === req)) || state === "WAITING" || state === "ANIMATING";
         btn.innerText = (state === "WAITING") ? "等待中" : (state === "MY_TURN") ? "確認叫牌" : (state === "FOLLOWING") ? "確認跟牌" : "等待中";
-
         for(let i=0; i<4; i++) {
             let wIdx = (i + myIndex) % 4;
             document.getElementById(`name-${i}`).innerText = names[wIdx] || "等待中";
@@ -388,7 +352,6 @@
                     }}; h.appendChild(d);
                 });
             } else hands[wIdx].forEach(() => h.innerHTML += '<div class="card back"></div>');
-            
             const t = document.getElementById(`t-${i}`); t.innerHTML = '';
             trickHistory[wIdx].forEach(card => {
                 const tag = document.createElement('div'); tag.className = `trick-tag ${card.r ? 'red-p' : ''}`;
@@ -414,11 +377,10 @@
         render();
     }
 
-    function resetRoundState() { trickHistory=[[],[],[],[]]; selectedIDs=[]; confirmedIDs=[]; currentCall=null; tableCards=[[],[],[],[]]; hasConfirmed=[false,false,false,false]; roundWinnerRecords=[]; hideToast(); }
+    function resetRoundState() { trickHistory=[[],[],[],[]]; selectedIDs=[]; confirmedIDs=[]; currentCall=null; tableCards=[[],[],[],[]]; hasConfirmed=[false,false,false,false]; hideToast(); }
     function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(() => { if(!currentCall) t.style.display = 'none'; }, 2500); }
     function showPersistentToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; }
     function hideToast() { document.getElementById('toast').style.display = 'none'; }
-    
     function showSettle(diffs, counts, lastWinner) {
         document.getElementById('last-winner-info').innerText = `🏆 最後贏家為結算者：${lastWinner}`;
         const list = document.getElementById('result-list'); list.innerHTML = '';
@@ -429,7 +391,6 @@
         document.getElementById('settlement-overlay').style.display = 'flex';
     }
     function requestNextGame() { if (isHost) serverStartRound(); else hostConn.send({type: 'REQ_NEXT'}); }
-    function toggleRules(s) { document.getElementById('rule-modal').style.display = s ? 'flex' : 'none'; }
 </script>
 </body>
 </html>
