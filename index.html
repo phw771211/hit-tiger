@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>象棋吃墩 PVP v30.47 - 最終規則版</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
+        body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
+        .table { width: 700px; height: 700px; background: var(--table); border: 12px solid #5d4037; border-radius: 50%; position: relative; box-shadow: inset 0 0 100px #000; display: none; }
+        .player { position: absolute; text-align: center; width: 360px; z-index: 10; padding: 10px; border-radius: 15px; }
+        .p-0 { bottom: 10px; left: 50%; transform: translateX(-50%); }
+        .p-1 { left: -140px; top: 50%; transform: translateY(-50%) rotate(90deg); }
+        .p-2 { top: 10px; left: 50%; transform: translateX(-50%) rotate(180deg); }
+        .p-3 { right: -140px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
+        .active-glow { background: rgba(241, 196, 15, 0.3); box-shadow: 0 0 25px var(--gold); }
+        .hand { display: flex; gap: 5px; justify-content: center; min-height: 80px; margin-top: 5px; flex-wrap: nowrap; width: 100%; }
+        .card { width: 40px; height: 60px; background: white; color: black; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; border: 2px solid #333; cursor: pointer; transition: transform 0.2s; flex-shrink: 0; }
+        .card.red-p { color: var(--red); border-color: var(--red); }
+        .card.selected { transform: translateY(-18px); border: 3px solid var(--gold); box-shadow: 0 5px 15px var(--gold); }
+        .card.confirmed { opacity: 0.4; filter: grayscale(0.8); transform: translateY(-12px); cursor: default; }
+        .card.back { background: var(--card-back) !important; color: transparent !important; border-color: #fff; }
+        .slot { position: absolute; width: 150px; height: 110px; display: flex; justify-content: center; align-items: center; gap: 4px; background: rgba(0,0,0,0.15); border: 2px dashed rgba(255,255,255,0.2); border-radius: 10px; pointer-events: none; }
+        .slot-0 { bottom: 200px; left: 50%; transform: translateX(-50%); }
+        .slot-1 { left: 160px; top: 50%; transform: translateY(-50%) rotate(90deg); }
+        .slot-2 { top: 200px; left: 50%; transform: translateX(-50%) rotate(180deg); }
+        .slot-3 { right: 160px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
+        .slot .revealed-card { width: 40px; height: 60px; background: white; color: black; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; border: 2px solid #333; }
+        .slot .revealed-card.red-p { color: var(--red); border-color: var(--red); }
+        .slot .hidden-win { background: #555 !important; border-color: #333 !important; color: transparent !important; }
+        .tricks { display: flex; gap: 2px; height: 25px; justify-content: center; margin-bottom: 5px; flex-wrap: wrap; max-width: 250px; margin: 0 auto; }
+        .trick-tag { width: 22px; height: 22px; background: #fff; color: #000; font-size: 13px; font-weight: bold; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid #333; }
+        .trick-tag.red-p { color: var(--red); border-color: var(--red); }
+        #settlement-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 10000; }
+        button { padding: 15px 35px; background: #e67e22; color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: bold; font-size: 18px; }
+        button:disabled { background: #7f8c8d; cursor: not-allowed; }
+        input#nick-in { padding: 12px; width: 80%; border-radius: 10px; border: 2px solid var(--gold); background: #34495e; color: white; font-size: 16px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+<div id="timer-box" style="position:absolute; top:20px; right:20px; font-size:36px; font-weight:bold; color:#e74c3c; background:rgba(0,0,0,0.6); padding:5px 20px; border-radius:10px; display:none;">30</div>
+<div id="toast" style="position:fixed; top:20%; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.9); color:var(--gold); padding:15px 30px; border:2px solid var(--gold); border-radius:10px; display:none; z-index:99999; font-size:20px; font-weight:bold;"></div>
+
+<div id="lobby" style="position:absolute; width:400px; background:#2c3e50; padding:40px; border-radius:20px; text-align:center; border:3px solid var(--gold); z-index:10001;">
+    <h2 style="color:var(--gold);">象棋吃墩 PVP</h2>
+    <div id="lobby-init-name">
+        <input type="text" id="nick-in" placeholder="請輸入您的暱稱" maxlength="10">
+        <div id="lobby-ops">
+            <button id="btn-host" onclick="createRoom()" style="width:100%;">創建房間</button>
+            <button id="btn-join" onclick="joinRoomAction()" style="width:100%; display:none; margin-top:10px; background:#27ae60;">加入遊戲</button>
+        </div>
+    </div>
+    <div id="lobby-status" style="display:none;">
+        <p id="player-count">(1/4)</p>
+        <div id="player-list" style="margin:15px 0; text-align:left; color:#ecf0f1; padding-left:20px;"></div>
+        <input type="text" id="copy-url" readonly onclick="this.select();" style="width:100%; padding:8px; text-align:center; margin-top:10px; background:#34495e; color:white; border:none;">
+        <button id="btn-roll" onclick="hostRollDice()" style="margin-top:20px; display:none; width:100%;">🎲 擲骰決定首家</button>
+    </div>
+</div>
+
+<div id="settlement-overlay">
+    <div style="background:#2c3e50; border:3px solid var(--gold); padding:30px; border-radius:15px; width:420px; text-align:center;">
+        <h2 style="color:var(--gold);">本局結算</h2>
+        <div id="last-winner-info" style="color:white; margin-bottom:15px; font-weight:bold;"></div>
+        <div id="result-list"></div>
+        <button onclick="requestNextGame()" style="margin-top:20px;">下一局遊戲</button>
+    </div>
+</div>
+
+<div class="table" id="main-table">
+    <div id="area-0" class="player p-0"><div id="t-0" class="tricks"></div><div id="h-0" class="hand"></div><div><b id="name-0">南</b><div id="status-0" style="height:20px; color:var(--gold);"></div><div id="bal-0">$5000</div></div></div>
+    <div id="area-1" class="player p-1"><div><b id="name-1">西</b><div id="status-1" style="height:20px; color:var(--gold);"></div><div id="bal-1">$5000</div></div><div id="h-1" class="hand"></div><div id="t-1" class="tricks"></div></div>
+    <div id="area-2" class="player p-2"><div><b id="name-2">北</b><div id="status-2" style="height:20px; color:var(--gold);"></div><div id="bal-2">$5000</div></div><div id="h-2" class="hand"></div><div id="t-2" class="tricks"></div></div>
+    <div id="area-3" class="player p-3"><div><b id="name-3">東</b><div id="status-3" style="height:20px; color:var(--gold);"></div><div id="bal-3">$5000</div></div><div id="h-3" class="hand"></div><div id="t-3" class="tricks"></div></div>
+    <div id="slot-0" class="slot slot-0"></div><div id="slot-1" class="slot slot-1"></div>
+    <div id="slot-2" class="slot slot-2"></div><div id="slot-3" class="slot slot-3"></div>
+</div>
+
+<div class="controls" style="position:absolute; bottom:30px; right:30px;"><button id="main-btn" onclick="flow()" disabled>等待中</button></div>
+
+<script>
+    const CHESS_DATA = [
+        {n:'帥', v:7, r:true}, {n:'仕', v:6, r:true}, {n:'仕', v:6, r:true}, {n:'相', v:5, r:true}, {n:'相', v:5, r:true},
+        {n:'俥', v:4, r:true}, {n:'俥', v:4, r:true}, {n:'瑪', v:3, r:true}, {n:'瑪', v:3, r:true}, {n:'砲', v:2, r:true}, {n:'砲', v:2, r:true},
+        {n:'兵', v:1, r:true}, {n:'兵', v:1, r:true}, {n:'兵', v:1, r:true}, {n:'兵', v:1, r:true}, {n:'兵', v:1, r:true},
+        {n:'將', v:7, r:false}, {n:'士', v:6, r:false}, {n:'士', v:6, r:false}, {n:'象', v:5, r:false}, {n:'象', v:5, r:false},
+        {n:'車', v:4, r:false}, {n:'車', v:4, r:false}, {n:'馬', v:3, r:false}, {n:'馬', v:3, r:false}, {n:'包', v:2, r:false}, {n:'包', v:2, r:false},
+        {n:'卒', v:1, r:false}, {n:'卒', v:1, r:false}, {n:'卒', v:1, r:false}, {n:'卒', v:1, r:false}, {n:'卒', v:1, r:false}
+    ];
+
+    let peer = null, connections = [], hostConn = null, isHost = false, myIndex = -1;
+    let balances = [5000, 5000, 5000, 5000], hands = [[],[],[],[]], trickHistory = [[],[],[],[]];
+    let selectedIDs = [], confirmedIDs = [], state = "IDLE", turn = 0, currentCall = null;
+    let tableCards = [[],[],[],[]], hasConfirmed = [false, false, false, false], timerInterval = null;
+    let names = ["","","",""];
+
+    const rid = (new URLSearchParams(window.location.search)).get('room');
+    if (rid) {
+        document.getElementById('btn-host').style.display = 'none';
+        document.getElementById('btn-join').style.display = 'block';
+    }
+
+    // 核心牌型判定邏輯修正
+    function getPattern(cards) {
+        if (!cards || cards.length === 0) return null;
+        const len = cards.length;
+        const isAllRed = cards.every(c => c.r);
+        const isAllBlack = cards.every(c => !c.r);
+        if (!isAllRed && !isAllBlack) return null;
+
+        const ns = cards.map(c => c.n);
+        const vSum = cards.reduce((s, c) => s + c.v + (c.r ? 0.1 : 0), 0);
+
+        if (len === 1) return { name: "單", pwr: vSum };
+        if ([...new Set(ns)].length === 1 && len >= 2) return { name: "對", pwr: 1000 * len + vSum };
+
+        const groupA = isAllRed ? ['帥', '仕', '相'] : ['將', '士', '象'];
+        const groupB = isAllRed ? ['俥', '瑪', '砲'] : ['車', '馬', '包'];
+
+        const hasA = groupA.every(name => ns.includes(name));
+        const onlyA = ns.every(name => groupA.includes(name));
+        const hasB = groupB.every(name => ns.includes(name));
+        const onlyB = ns.every(name => groupB.includes(name));
+
+        if ((hasA && onlyA) || (hasB && onlyB)) return { name: "順", pwr: 2000 * len + vSum };
+
+        const targetSoldier = isAllRed ? '兵' : '卒';
+        if (len === 5 && ns.every(n => n === targetSoldier)) return { name: "五兵", pwr: 5000 + vSum };
+
+        return null;
+    }
+
+    function createRoom() {
+        const myName = document.getElementById('nick-in').value || "房主";
+        names[0] = myName; myIndex = 0; isHost = true;
+        peer = new Peer();
+        document.getElementById('lobby-init-name').style.display = 'none';
+        document.getElementById('lobby-status').style.display = 'block';
+        peer.on('open', (id) => {
+            document.getElementById('copy-url').value = window.location.origin + window.location.pathname + "?room=" + id;
+            updateLobbyNames();
+        });
+        peer.on('connection', (conn) => {
+            if (connections.length >= 3) return conn.close();
+            connections.push(conn);
+            conn.on('open', () => {
+                conn.on('data', (d) => handleData(d, connections.indexOf(conn) + 1));
+            });
+        });
+    }
+
+    function joinRoomAction() {
+        const myName = document.getElementById('nick-in').value || "玩家";
+        isHost = false; peer = new Peer();
+        peer.on('open', () => {
+            hostConn = peer.connect(rid);
+            hostConn.on('open', () => {
+                hostConn.send({type: 'JOIN', name: myName});
+                hostConn.on('data', (d) => handleData(d, 0));
+            });
+        });
+    }
+
+    function updateLobbyNames() {
+        if (!isHost) return;
+        const activeNames = names.filter(n => n !== "");
+        document.getElementById('player-count').innerText = `(${activeNames.length}/4)`;
+        document.getElementById('player-list').innerHTML = activeNames.map(n => `<div>• ${n}</div>`).join('');
+        if (activeNames.length === 4) document.getElementById('btn-roll').style.display = 'block';
+        broadcast({type: 'LOBBY_SYNC', names: names, count: activeNames.length});
+    }
+
+    function hostRollDice() {
+        const startIdx = Math.floor(Math.random() * 4);
+        broadcast({type: 'MSG', msg: `🎲 擲骰結果：首家為 ${names[startIdx]}`});
+        setTimeout(() => serverInitGame(startIdx), 1500);
+    }
+
+    function handleData(data, senderIdx) {
+        if (data.type === 'JOIN' && isHost) { names[senderIdx] = data.name; updateLobbyNames(); }
+        if (data.type === 'LOBBY_SYNC') {
+            names = data.names;
+            document.getElementById('lobby-init-name').style.display = 'none';
+            document.getElementById('lobby-status').style.display = 'block';
+            document.getElementById('player-count').innerText = `(${data.count}/4)`;
+            document.getElementById('player-list').innerHTML = names.filter(n => n !== "").map(n => `<div>• ${n}</div>`).join('');
+        }
+        if (data.type === 'INIT') {
+            myIndex = data.index;
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('main-table').style.display = 'block';
+            resetRoundState(); render();
+        }
+        if (data.type === 'DISTRIBUTE') {
+            document.getElementById('settlement-overlay').style.display = 'none';
+            resetRoundState(); hands = data.hands; sortHand(); render();
+        }
+        if (data.type === 'SYNC') {
+            turn = data.turn; currentCall = data.currentCall;
+            hasConfirmed = data.hasConfirmed; 
+            if (currentCall === null) state = (turn === myIndex) ? "MY_TURN" : "IDLE";
+            else state = hasConfirmed[myIndex] ? "WAITING" : "FOLLOWING";
+            document.getElementById('timer-box').style.display = currentCall ? 'block' : 'none';
+            render();
+        }
+        if (data.type === 'CONFIRM_OK') {
+            hasConfirmed[data.idx] = true;
+            if (data.idx === myIndex) { confirmedIDs = [...selectedIDs]; selectedIDs = []; state = "WAITING"; }
+            const uiIdx = (data.idx - myIndex + 4) % 4;
+            document.getElementById(`slot-${uiIdx}`).innerHTML = Array(data.cardCount).fill('<div class="p-card" style="width:32px; height:48px; background:var(--card-back); border-radius:3px; border:1px solid white;"></div>').join('');
+            render();
+        }
+        if (data.type === 'FORCE_BATTLE') {
+            state = "ANIMATING";
+            tableCards = data.tableCards; 
+            for(let i=0; i<4; i++) {
+                const ids = tableCards[i].map(c => c.id);
+                hands[i] = hands[i].filter(card => !ids.includes(card.id));
+            }
+            trickHistory[data.winIdx].push(...data.wonCards);
+            runBattleAnimation(data.winIdx, data.callerIdx);
+        }
+        if (data.type === 'PLAY_ACTION' && isHost) serverReceiveAction(senderIdx, data.cards);
+        if (data.type === 'SETTLE_ALL') { 
+            balances = data.balances; 
+            showSettle(data.diffs, data.counts, data.lastWinner); 
+        }
+        if (data.type === 'MSG') showToast(data.msg);
+        if (data.type === 'TIMER') document.getElementById('timer-box').innerText = data.time;
+        if (data.type === 'REQ_NEXT' && isHost) serverStartRound();
+    }
+
+    function broadcast(data) {
+        if (isHost) { connections.forEach(c => c.send(data)); handleData(data, 0); }
+        else hostConn.send(data);
+    }
+
+    function serverInitGame(startTurn) {
+        broadcast({type: 'INIT', index: 0});
+        connections.forEach((c, i) => c.send({type: 'INIT', index: i+1}));
+        setTimeout(() => serverStartRound(startTurn), 500);
+    }
+
+    function serverStartRound(forcedStart) {
+        let deck = [...CHESS_DATA].map(c => ({...c, id: Math.random()})).sort(() => Math.random() - 0.5);
+        let startTurn = (forcedStart !== undefined) ? forcedStart : Math.floor(Math.random() * 4);
+        let tempHands = [[],[],[],[]];
+        for(let r=0; r<8; r++) for(let i=0; i<4; i++) tempHands[(startTurn+i)%4].push(deck.pop());
+        broadcast({type: 'DISTRIBUTE', hands: tempHands});
+        turn = startTurn;
+        serverSyncLocal();
+    }
+
+    function serverSyncLocal() { broadcast({type: 'SYNC', turn: turn, currentCall: currentCall, hasConfirmed: hasConfirmed}); }
+
+    function serverReceiveAction(idx, cards) {
+        if (hasConfirmed[idx]) return;
+        tableCards[idx] = cards;
+        hasConfirmed[idx] = true;
+        broadcast({type: 'CONFIRM_OK', idx: idx, cardCount: cards.length});
+        if (currentCall === null) {
+            let pat = getPattern(cards);
+            currentCall = {...pat, count: cards.length, callerIdx: idx};
+            startTimerHost();
+            serverSyncLocal();
+        } 
+        if (hasConfirmed.every(v => v === true)) {
+            if (timerInterval) clearInterval(timerInterval);
+            serverProcessBattle();
+        }
+    }
+
+    function serverProcessBattle() {
+        let winIdx = currentCall.callerIdx, maxPwr = currentCall.pwr;
+        for(let i=0; i<4; i++) {
+            let pPat = getPattern(tableCards[i]);
+            if (tableCards[i].length === currentCall.count && pPat && pPat.name === currentCall.name) {
+                if (pPat.pwr > maxPwr) { maxPwr = pPat.pwr; winIdx = i; }
+            }
+        }
+        let wonCards = [...tableCards[winIdx]]; 
+        broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: wonCards});
+        setTimeout(() => {
+            if (hands[0].length === 0) serverFinalSettle(winIdx);
+            else { turn = winIdx; currentCall = null; hasConfirmed = [false, false, false, false]; serverSyncLocal(); }
+        }, 4000);
+    }
+
+    function startTimerHost() {
+        let t = 30; if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            t--; broadcast({type: 'TIMER', time: t});
+            if (t <= 0) {
+                clearInterval(timerInterval);
+                for(let i=0; i<4; i++) if(!hasConfirmed[i]) serverReceiveAction(i, [hands[i][0]]);
+            }
+        }, 1000);
+    }
+
+    function serverFinalSettle(lastWinnerIdx) {
+        let diffs = [0,0,0,0];
+        let finalCounts = trickHistory.map(h => h.length); 
+        let baseTricks = 5, perTrickRate = 20, totalFlow = 0;
+
+        finalCounts.forEach((count, i) => {
+            if (i !== lastWinnerIdx) {
+                let personalDiff = (count - baseTricks) * perTrickRate;
+                diffs[i] = personalDiff;
+                totalFlow += personalDiff;
+            }
+        });
+        diffs[lastWinnerIdx] = -totalFlow;
+        for(let i=0; i<4; i++) balances[i] += diffs[i];
+        broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalCounts, lastWinner: names[lastWinnerIdx]});
+    }
+
+    function sortHand() { hands[myIndex].sort((a,b) => (b.v !== a.v) ? b.v - a.v : (b.r ? -1 : 1)); }
+
+    function flow() {
+        if (state === "WAITING" || state === "ANIMATING") return;
+        const played = hands[myIndex].filter(c => selectedIDs.includes(c.id));
+        if (state === "MY_TURN") {
+            if (!getPattern(played)) return showToast("❌ 牌型無效");
+            broadcast({type: 'PLAY_ACTION', cards: played});
+        } else if (state === "FOLLOWING") {
+            if (played.length !== currentCall.count) return showToast(`❌ 需出 ${currentCall.count} 張`);
+            broadcast({type: 'PLAY_ACTION', cards: played});
+        }
+    }
+
+    function render() {
+        const btn = document.getElementById('main-btn');
+        const countNeeded = currentCall ? currentCall.count : 0;
+        const canSubmit = (state === "MY_TURN" && selectedIDs.length > 0) || (state === "FOLLOWING" && selectedIDs.length === countNeeded);
+        btn.disabled = !canSubmit || state === "WAITING" || state === "ANIMATING";
+        btn.innerText = (state === "WAITING") ? "等待中..." : (state === "MY_TURN") ? "確認叫牌" : (state === "FOLLOWING") ? "確認跟牌" : "等待中";
+
+        for(let i=0; i<4; i++) {
+            let wIdx = (i + myIndex) % 4;
+            document.getElementById(`name-${i}`).innerText = names[wIdx] || "等待中";
+            document.getElementById(`area-${i}`).classList.toggle('active-glow', wIdx === turn);
+            document.getElementById(`bal-${i}`).innerText = `$${balances[wIdx]}`;
+            document.getElementById(`status-${i}`).innerText = (wIdx === turn && !currentCall) ? "叫牌中..." : (currentCall && !hasConfirmed[wIdx]) ? "跟牌中..." : (hasConfirmed[wIdx]) ? "✓ 已就緒" : "";
+            const h = document.getElementById(`h-${i}`); h.innerHTML = '';
+            if (wIdx === myIndex) {
+                hands[wIdx].forEach(c => {
+                    const d = document.createElement('div');
+                    d.className = `card ${c.r?'red-p':''} ${selectedIDs.includes(c.id)?'selected':''} ${confirmedIDs.includes(c.id)?'confirmed':''}`;
+                    d.innerText = c.n; d.onclick = () => {
+                        if (state === "ANIMATING" || hasConfirmed[myIndex]) return;
+                        if (selectedIDs.includes(c.id)) selectedIDs = selectedIDs.filter(id => id !== c.id);
+                        else if (selectedIDs.length < (currentCall ? currentCall.count : 8)) selectedIDs.push(c.id);
+                        render();
+                    }; h.appendChild(d);
+                });
+            } else hands[wIdx].forEach(() => h.innerHTML += '<div class="card back"></div>');
+            const t = document.getElementById(`t-${i}`); t.innerHTML = '';
+            trickHistory[wIdx].forEach(card => {
+                const tag = document.createElement('div');
+                tag.className = `trick-tag ${card.r ? 'red-p' : ''}`;
+                tag.innerText = card.n;
+                t.appendChild(tag);
+            });
+        }
+    }
+
+    async function runBattleAnimation(winIdx, callerIdx) {
+        let currentMaxPwr = -1;
+        for(let i=0; i<4; i++) {
+            let p = (callerIdx + i) % 4;
+            const sIdx = (p - myIndex + 4) % 4;
+            let pPat = getPattern(tableCards[p]);
+            let shouldReveal = (i === 0) || (tableCards[p].length === currentCall.count && pPat && pPat.pwr > currentMaxPwr);
+            if (shouldReveal) currentMaxPwr = pPat ? pPat.pwr : currentMaxPwr;
+            document.getElementById(`slot-${sIdx}`).innerHTML = tableCards[p].map(c => `
+                <div class="revealed-card ${shouldReveal ? (c.r?'red-p':'') : 'hidden-win'}">${shouldReveal ? c.n : ''}</div>
+            `).join('');
+            await new Promise(r => setTimeout(r, 700));
+        }
+        await new Promise(r => setTimeout(r, 1500));
+        for(let i=0; i<4; i++) document.getElementById(`slot-${i}`).innerHTML = '';
+        render();
+    }
+
+    function resetRoundState() {
+        trickHistory=[[],[],[],[]]; selectedIDs=[]; confirmedIDs=[]; currentCall=null;
+        tableCards=[[],[],[],[]]; hasConfirmed=[false,false,false,false];
+        for(let i=0; i<4; i++) document.getElementById(`slot-${i}`).innerHTML = '';
+    }
+
+    function showToast(m) {
+        const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block';
+        setTimeout(() => t.style.display = 'none', 3000);
+    }
+
+    function showSettle(diffs, counts, lastWinnerName) {
+        document.getElementById('last-winner-info').innerText = `🏆 最後一墩贏家：${lastWinnerName}`;
+        const list = document.getElementById('result-list'); list.innerHTML = '';
+        for(let i=0; i<4; i++) {
+            const wIdx = (i + myIndex) % 4;
+            list.innerHTML += `<div style="display:flex; justify-content:space-between; margin:8px 0; color:white;">
+                <span>${names[wIdx]} (得 ${counts[wIdx]} 墩)</span>
+                <span style="color:${diffs[wIdx]>=0?'#2ecc71':'#e74c3c'}">${diffs[wIdx]>=0?'+':''}${diffs[wIdx]}</span>
+            </div>`;
+        }
+        document.getElementById('settlement-overlay').style.display = 'flex';
+    }
+
+    function requestNextGame() { if (isHost) serverStartRound(); else hostConn.send({type: 'REQ_NEXT'}); }
+</script>
+</body>
+</html>
