@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>象棋吃墩 PVP v30.50 - 全新規則版</title>
+    <title>象棋吃墩 PVP v30.51 - 戰況顯示版</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
@@ -40,7 +40,6 @@
         .trick-tag { width: 22px; height: 22px; background: #fff; color: #000; font-size: 13px; font-weight: bold; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid #333; }
         .trick-tag.red-p { color: var(--red); border-color: var(--red); }
 
-        /* 規則按鈕與彈窗 */
         #rule-btn { position: fixed; top: 20px; left: 20px; padding: 10px 20px; background: rgba(0,0,0,0.5); border: 1px solid var(--gold); color: var(--gold); border-radius: 20px; cursor: pointer; z-index: 1000; }
         #rule-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 20000; padding: 20px; }
         .rule-content { background: #2c3e50; border: 2px solid var(--gold); padding: 25px; border-radius: 15px; max-width: 450px; line-height: 1.5; font-size: 14px; }
@@ -75,7 +74,7 @@
         <h3 style="color:var(--gold); margin-top:0; text-align:center;">🎴 象棋吃墩規則說明</h3>
         <div style="text-align: left; max-height: 400px; overflow-y: auto;">
             <p><b>● 叫牌與牌型：</b>首家擲骰決定。合法牌型含單張、對子、同子(多隻兵/卒)、或特定順子(將士象/車馬包類)。順子僅需含三種主牌，可加入重複牌達成「X順子」，如：俥瑪瑪砲(四順子)，最高六順子。</p>
-            <p><b>● 跟牌勝負：</b>需跟隨相同張數與牌型。<b>紅色牌 > 黑色牌</b>（如紅兵對大於黑卒對）。大牌者得墩並獲得下輪控牌權。</p>
+            <p><b>● 跟牌勝負：</b>需跟隨相同張數與牌型。<b>紅色牌 > 黑色牌</b>。大牌者得墩並獲得下輪控牌權。</p>
             <p><b>● 結算基準：</b>每局8墩，5墩為基準，每墩基礎20分。末輪贏家為結算者，其餘三家若低於基準需支付金額給結算者。</p>
             <p><b>● 全壘打：</b>單一玩家贏下全部 8 墩，其餘玩家需支付<b>雙倍金額</b>給該玩家。</p>
         </div>
@@ -84,7 +83,7 @@
 </div>
 
 <div id="timer-box" style="position:absolute; top:20px; right:20px; font-size:36px; font-weight:bold; color:#e74c3c; background:rgba(0,0,0,0.6); padding:5px 20px; border-radius:10px; display:none; z-index: 10002;">30</div>
-<div id="toast" style="position:fixed; top:20%; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.9); color:var(--gold); padding:15px 30px; border:2px solid var(--gold); border-radius:10px; display:none; z-index:99999; font-size:20px; font-weight:bold;"></div>
+<div id="toast" style="position:fixed; top:20%; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.9); color:var(--gold); padding:15px 30px; border:2px solid var(--gold); border-radius:10px; display:none; z-index:99999; font-size:20px; font-weight:bold; text-align:center;"></div>
 
 <div id="lobby" style="position:absolute; width:320px; background:#2c3e50; padding:30px; border-radius:20px; text-align:center; border:3px solid var(--gold); z-index:10001;">
     <h2 style="color:var(--gold);">象棋吃墩 PVP</h2>
@@ -154,7 +153,7 @@
         const isAllBlack = cards.every(c => !c.r);
         if (!isAllRed && !isAllBlack) return null;
         const ns = cards.map(c => c.n);
-        const vSum = cards.reduce((s, c) => s + c.v + (c.r ? 0.5 : 0), 0); // 加大紅牌權重 (0.5 > 0)
+        const vSum = cards.reduce((s, c) => s + c.v + (c.r ? 0.5 : 0), 0);
         if (len === 1) return { name: "單", pwr: vSum };
         if ([...new Set(ns)].length === 1 && len >= 2) return { name: "同子", pwr: 1000 * len + vSum };
         const groupA = isAllRed ? ['帥', '仕', '相'] : ['將', '士', '象'];
@@ -235,8 +234,14 @@
         if (data.type === 'SYNC') {
             turn = data.turn; currentCall = data.currentCall;
             hasConfirmed = data.hasConfirmed; 
-            if (currentCall === null) state = (turn === myIndex) ? "MY_TURN" : "IDLE";
-            else state = hasConfirmed[myIndex] ? "WAITING" : "FOLLOWING";
+            if (currentCall === null) {
+                state = (turn === myIndex) ? "MY_TURN" : "IDLE";
+                hideToast(); // 清除叫牌顯示
+            } else {
+                state = hasConfirmed[myIndex] ? "WAITING" : "FOLLOWING";
+                // 顯示目前牌型
+                showPersistentToast(`📢 目前牌型：${currentCall.count}${currentCall.name}`);
+            }
             document.getElementById('timer-box').style.display = currentCall ? 'block' : 'none';
             render();
         }
@@ -249,6 +254,7 @@
         }
         if (data.type === 'FORCE_BATTLE') {
             state = "ANIMATING";
+            hideToast(); // 開始比牌動畫前隱藏提示
             tableCards = data.tableCards; 
             for(let i=0; i<4; i++) {
                 const ids = tableCards[i].map(c => c.id);
@@ -338,29 +344,17 @@
         let diffs = [0,0,0,0];
         let finalCounts = trickHistory.map(h => h.length); 
         let baseTricks = 5, perTrickRate = 20, totalFlow = 0;
-        
-        // 檢查是否有全壘打
         let slamWinner = finalCounts.findIndex(c => c === 8);
         if (slamWinner !== -1) {
-            for(let i=0; i<4; i++) {
-                if(i !== slamWinner) {
-                    diffs[i] = -60 * 2; // (5-8)*20 * 2倍 = -120
-                    totalFlow += diffs[i];
-                }
-            }
+            for(let i=0; i<4; i++) if(i !== slamWinner) { diffs[i] = -60 * 2; totalFlow += diffs[i]; }
             diffs[slamWinner] = -totalFlow;
         } else {
-            // 普通結算：最後一輪贏家為結算者 (lastWinnerIdx)
-            for(let i=0; i<4; i++) {
-                if (i !== lastWinnerIdx) {
-                    let d = (finalCounts[i] - baseTricks) * perTrickRate;
-                    diffs[i] = d;
-                    totalFlow += d;
-                }
+            for(let i=0; i<4; i++) if (i !== lastWinnerIdx) {
+                let d = (finalCounts[i] - baseTricks) * perTrickRate;
+                diffs[i] = d; totalFlow += d;
             }
             diffs[lastWinnerIdx] = -totalFlow;
         }
-        
         for(let i=0; i<4; i++) balances[i] += diffs[i];
         broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalCounts, lastWinner: names[lastWinnerIdx]});
     }
@@ -437,12 +431,20 @@
         trickHistory=[[],[],[],[]]; selectedIDs=[]; confirmedIDs=[]; currentCall=null;
         tableCards=[[],[],[],[]]; hasConfirmed=[false,false,false,false];
         for(let i=0; i<4; i++) document.getElementById(`slot-${i}`).innerHTML = '';
+        hideToast();
     }
 
     function showToast(m) {
         const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block';
-        setTimeout(() => t.style.display = 'none', 3000);
+        setTimeout(() => { if(state!=="FOLLOWING" && state!=="WAITING") t.style.display = 'none'; }, 3000);
     }
+    
+    // 專用於叫牌顯示的新函數
+    function showPersistentToast(m) {
+        const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block';
+    }
+
+    function hideToast() { document.getElementById('toast').style.display = 'none'; }
 
     function showSettle(diffs, counts, lastWinnerName) {
         document.getElementById('last-winner-info').innerText = `🏆 最後一墩贏家：${lastWinnerName}`;
