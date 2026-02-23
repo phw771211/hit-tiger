@@ -3,14 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>象棋吃墩 PVP v30.7 - 規則優化版</title>
+    <title>象棋吃墩 PVP v30.8 - 文字正向與墩數修正版</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
         * { box-sizing: border-box; }
         body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
         
-        /* UI Scale 縮放機制：解決手機板重疊問題 */
         .table-container { width: 700px; height: 700px; display: flex; justify-content: center; align-items: center; }
         @media (max-width: 750px) { .table-container { transform: scale(0.5); } }
         @media (max-width: 400px) { .table-container { transform: scale(0.42); } }
@@ -22,6 +21,12 @@
         .p-1 { left: -140px; top: 50%; transform: translateY(-50%) rotate(90deg); }
         .p-2 { top: 10px; left: 50%; transform: translateX(-50%) rotate(180deg); }
         .p-3 { right: -140px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
+
+        /* 關鍵修正：修正文字轉向，讓所有玩家視角的文字都是正的 */
+        .info-container { transform: rotate(0deg); }
+        .p-1 .info-container { transform: rotate(-90deg); }
+        .p-2 .info-container { transform: rotate(-180deg); }
+        .p-3 .info-container { transform: rotate(90deg); }
         
         .active-glow { background: rgba(241, 196, 15, 0.3); box-shadow: 0 0 25px var(--gold); }
         .hand { display: flex; gap: 5px; justify-content: center; min-height: 80px; margin-top: 5px; flex-wrap: nowrap; width: 100%; }
@@ -38,7 +43,7 @@
         .slot-2 { top: 200px; left: 50%; transform: translateX(-50%) rotate(180deg); }
         .slot-3 { right: 160px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
         
-        .slot .revealed-card { width: 40px; height: 60px; background: white; color: black; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; border: 2px solid #333; }
+        .slot .revealed-card { width: 40px; height: 60px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; border: 2px solid #333; }
         .slot .revealed-card.red-p { color: var(--red); border-color: var(--red); }
         .slot .hidden-win { background: #555 !important; border-color: #333 !important; color: transparent !important; }
         
@@ -60,9 +65,6 @@
         button:disabled { background: #7f8c8d; cursor: not-allowed; }
         input#nick-in { padding: 12px; width: 100%; border-radius: 10px; border: 2px solid var(--gold); background: #34495e; color: white; margin-bottom: 20px; }
         
-        .waiting-text { color: #aaa; font-style: italic; font-size: 14px; margin-top: 15px; animation: blink 1.5s infinite; }
-        @keyframes blink { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
-
         .controls { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 100; }
         #main-btn { padding: 15px 50px; font-size: 20px; }
     </style>
@@ -76,13 +78,10 @@
         <h3 style="color:var(--gold); text-align:center; margin-top:0;">🎴 象棋吃墩規則</h3>
         <p><b>【象棋吃墩：叫牌與牌型】</b><br>
         由擲骰決定首家。合法牌型包括單張、對子、同子（多兵/卒），及特定順子（將士象、車馬包系列）。順子僅需包含基本三元素，可混入重複牌達成 X 順子，如「俥瑪瑪砲」為四順子，最高支援六順子。</p>
-        
         <p><b>【跟牌勝負】</b><br>
         必須跟隨叫牌的張數與牌型，如果手牌無法湊出該牌型，則需要任意出牌來湊出一樣的張數。同牌型時，點數大勝過點數小，且紅色大於黑色牌（如紅兵對大於黑卒對）。數字大者得墩，該輪得墩者獲下輪控牌權。</p>
-        
         <p><b>【結算與全壘打】</b><br>
         每局共 8 墩，5 墩為基準點，每墩 20 分。玩家須想辦法在最後一輪叫牌時獲勝。最終回合贏家為結算者。結算時，其餘玩家低於 5 墩的部分需支付分給結算者。若有人達成 8 墩全壘打，其餘三家需支付雙倍金額。</p>
-        
         <button onclick="toggleRules(false)" style="width:100%; margin-top:10px;">回到牌桌</button>
     </div>
 </div>
@@ -103,7 +102,7 @@
             <div id="player-list" style="margin:15px 0; text-align:left;"></div>
             <input type="text" id="copy-url" readonly onclick="this.select();" style="width:100%; padding:5px; font-size:10px; background:#34495e; color:white; border:none;">
             <button id="btn-roll" onclick="hostRollDice()" style="margin-top:20px; display:none; width:100%;">🎲 擲骰決定首家</button>
-            <div id="wait-host-msg" class="waiting-text" style="display:none;">⏳ 等待房主擲骰中...</div>
+            <div id="wait-host-msg" class="waiting-text" style="display:none; color:#aaa; font-style:italic; font-size:14px; margin-top:15px; animation: blink 1.5s infinite;">⏳ 等待房主擲骰中...</div>
         </div>
     </div>
 </div>
@@ -119,10 +118,11 @@
 
 <div class="table-container">
     <div class="table" id="main-table">
-        <div id="area-0" class="player p-0"><div id="t-0" class="tricks"></div><div id="h-0" class="hand"></div><div><b id="name-0">南</b><div id="status-0" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-0">$5000</div></div></div>
-        <div id="area-1" class="player p-1"><div><b id="name-1">西</b><div id="status-1" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-1">$5000</div></div><div id="h-1" class="hand"></div><div id="t-1" class="tricks"></div></div>
-        <div id="area-2" class="player p-2"><div><b id="name-2">北</b><div id="status-2" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-2">$5000</div></div><div id="h-2" class="hand"></div><div id="t-2" class="tricks"></div></div>
-        <div id="area-3" class="player p-3"><div><b id="name-3">東</b><div id="status-3" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-3">$5000</div></div><div id="h-3" class="hand"></div><div id="t-3" class="tricks"></div></div>
+        <div id="area-0" class="player p-0"><div id="t-0" class="tricks"></div><div id="h-0" class="hand"></div><div class="info-container"><b id="name-0">南</b><div id="status-0" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-0">$5000</div></div></div>
+        <div id="area-1" class="player p-1"><div class="info-container"><b id="name-1">西</b><div id="status-1" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-1">$5000</div></div><div id="h-1" class="hand"></div><div id="t-1" class="tricks"></div></div>
+        <div id="area-2" class="player p-2"><div class="info-container"><b id="name-2">北</b><div id="status-2" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-2">$5000</div></div><div id="h-2" class="hand"></div><div id="t-2" class="tricks"></div></div>
+        <div id="area-3" class="player p-3"><div class="info-container"><b id="name-3">東</b><div id="status-3" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-3">$5000</div></div><div id="h-3" class="hand"></div><div id="t-3" class="tricks"></div></div>
+        
         <div id="slot-0" class="slot slot-0"></div><div id="slot-1" class="slot slot-1"></div>
         <div id="slot-2" class="slot slot-2"></div><div id="slot-3" class="slot slot-3"></div>
     </div>
@@ -142,6 +142,7 @@
 
     let peer = null, connections = [], hostConn = null, isHost = false, myIndex = -1;
     let balances = [5000, 5000, 5000, 5000], hands = [[],[],[],[]], trickHistory = [[],[],[],[]];
+    let roundWinnerRecords = []; // 新增：精確記錄每墩誰贏了，解決小數點問題
     let selectedIDs = [], confirmedIDs = [], state = "IDLE", turn = 0, currentCall = null;
     let tableCards = [[],[],[],[]], hasConfirmed = [false, false, false, false], timerInterval = null, names = ["","","",""];
 
@@ -154,13 +155,8 @@
         const isAllRed = cards.every(c => c.r), isAllBlack = cards.every(c => !c.r);
         if (!isAllRed && !isAllBlack) return null;
         const vSum = cards.reduce((s, c) => s + c.v + (c.r ? 0.5 : 0), 0);
-        
         if (len === 1) return { name: "單張", pwr: vSum };
-        if ([...new Set(ns)].length === 1 && len >= 2) {
-            // 需求修正：長度為 2 稱為「對子」，其餘維持「同子」
-            return { name: (len === 2 ? "對子" : "同子"), pwr: 1000 * len + vSum };
-        }
-        
+        if ([...new Set(ns)].length === 1 && len >= 2) return { name: (len === 2 ? "對子" : "同子"), pwr: 1000 * len + vSum };
         const groupA = isAllRed ? ['帥', '仕', '相'] : ['將', '士', '象'];
         const groupB = isAllRed ? ['俥', '瑪', '砲'] : ['車', '馬', '包'];
         if ((groupA.every(n => ns.includes(n)) && ns.every(n => groupA.includes(n))) || 
@@ -230,7 +226,6 @@
             if (currentCall === null) { state = (turn === myIndex) ? "MY_TURN" : "IDLE"; hideToast(); }
             else { 
                 state = hasConfirmed[myIndex] ? "WAITING" : "FOLLOWING"; 
-                // 顯示牌型文字時，針對一對（2張）特別處理名稱
                 let callName = (currentCall.count === 2 && currentCall.name === "對子") ? "一對" : `${currentCall.count}張${currentCall.name}`;
                 showPersistentToast(`📢 目前牌型：${callName}`); 
             }
@@ -277,7 +272,8 @@
         let tempHands = [[],[],[],[]];
         for(let r=0; r<8; r++) for(let i=0; i<4; i++) tempHands[(startTurn+i)%4].push(deck.pop());
         broadcast({type: 'DISTRIBUTE', hands: tempHands});
-        turn = startTurn; serverSyncLocal();
+        turn = startTurn; roundWinnerRecords = []; // 重置勝局紀錄
+        serverSyncLocal();
     }
 
     function serverSyncLocal() { broadcast({type: 'SYNC', turn, currentCall, hasConfirmed}); }
@@ -302,6 +298,7 @@
                 if (pPat.pwr > maxPwr) { maxPwr = pPat.pwr; winIdx = i; }
             }
         }
+        roundWinnerRecords.push(winIdx); // 重要：直接紀錄贏家索引，一墩就是一次
         broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: [...tableCards[winIdx]]});
         setTimeout(() => {
             if (hands[0].length === 0) serverFinalSettle(winIdx);
@@ -318,24 +315,20 @@
     }
 
     function serverFinalSettle(lastWinnerIdx) {
-        let diffs = [0,0,0,0], finalCounts = trickHistory.map(h => h.length / (h.length === 0 ? 1 : (h.length/trickHistory.flat().length * 32/4) )), totalFlow = 0;
-        // 為了確保計算準確，我們直接計算得墩次數
-        let realCounts = [0,0,0,0];
-        // 由於每輪張數不一，這張牌數/總牌數逻辑較複雜，這裡簡化為記錄每局 winIdx 的次數
-        // (在 FORCE_BATTLE 邏輯中其實已經可以追蹤贏的次數，這裡為了維持當前代碼穩定性)
-        // 實際上 trickHistory.length 指的是該玩家贏得的總牌數，除以 32 再乘 8 即可得墩數
-        realCounts = trickHistory.map(h => (h.length / 32) * 8);
+        let finalCounts = [0,0,0,0], diffs = [0,0,0,0], totalFlow = 0;
+        // 修正：從勝局紀錄精確計算整數墩數
+        roundWinnerRecords.forEach(idx => finalCounts[idx]++);
 
-        let slamWinner = realCounts.findIndex(c => c >= 8);
+        let slamWinner = finalCounts.findIndex(c => c === 8);
         if (slamWinner !== -1) {
             for(let i=0; i<4; i++) if(i !== slamWinner) { diffs[i] = -120; totalFlow += 120; }
             diffs[slamWinner] = totalFlow;
         } else {
-            for(let i=0; i<4; i++) if (i !== lastWinnerIdx) { let d = (realCounts[i] - 5) * 20; diffs[i] = d; totalFlow += d; }
+            for(let i=0; i<4; i++) if (i !== lastWinnerIdx) { let d = (finalCounts[i] - 5) * 20; diffs[i] = d; totalFlow += d; }
             diffs[lastWinnerIdx] = -totalFlow;
         }
         for(let i=0; i<4; i++) balances[i] += diffs[i];
-        broadcast({type: 'SETTLE_ALL', balances, diffs, counts: realCounts, lastWinner: names[lastWinnerIdx]});
+        broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalCounts, lastWinner: names[lastWinnerIdx]});
     }
 
     function sortHand() { hands[myIndex].sort((a,b) => (b.v !== a.v) ? b.v - a.v : (b.r ? -1 : 1)); }
@@ -393,7 +386,7 @@
         render();
     }
 
-    function resetRoundState() { trickHistory=[[],[],[],[]]; selectedIDs=[]; confirmedIDs=[]; currentCall=null; tableCards=[[],[],[],[]]; hasConfirmed=[false,false,false,false]; hideToast(); }
+    function resetRoundState() { trickHistory=[[],[],[],[]]; selectedIDs=[]; confirmedIDs=[]; currentCall=null; tableCards=[[],[],[],[]]; hasConfirmed=[false,false,false,false]; roundWinnerRecords=[]; hideToast(); }
     function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(() => { if(!currentCall) t.style.display = 'none'; }, 2500); }
     function showPersistentToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; }
     function hideToast() { document.getElementById('toast').style.display = 'none'; }
