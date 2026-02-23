@@ -2,47 +2,91 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>象棋吃墩 PVP v30.47 - 最終規則版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>象棋吃墩 PVP v30.50 - 全新規則版</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
         body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
+        
         .table { width: 700px; height: 700px; background: var(--table); border: 12px solid #5d4037; border-radius: 50%; position: relative; box-shadow: inset 0 0 100px #000; display: none; }
+        
         .player { position: absolute; text-align: center; width: 360px; z-index: 10; padding: 10px; border-radius: 15px; }
         .p-0 { bottom: 10px; left: 50%; transform: translateX(-50%); }
         .p-1 { left: -140px; top: 50%; transform: translateY(-50%) rotate(90deg); }
         .p-2 { top: 10px; left: 50%; transform: translateX(-50%) rotate(180deg); }
         .p-3 { right: -140px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
+        
         .active-glow { background: rgba(241, 196, 15, 0.3); box-shadow: 0 0 25px var(--gold); }
         .hand { display: flex; gap: 5px; justify-content: center; min-height: 80px; margin-top: 5px; flex-wrap: nowrap; width: 100%; }
+        
         .card { width: 40px; height: 60px; background: white; color: black; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; border: 2px solid #333; cursor: pointer; transition: transform 0.2s; flex-shrink: 0; }
         .card.red-p { color: var(--red); border-color: var(--red); }
         .card.selected { transform: translateY(-18px); border: 3px solid var(--gold); box-shadow: 0 5px 15px var(--gold); }
         .card.confirmed { opacity: 0.4; filter: grayscale(0.8); transform: translateY(-12px); cursor: default; }
         .card.back { background: var(--card-back) !important; color: transparent !important; border-color: #fff; }
+        
         .slot { position: absolute; width: 150px; height: 110px; display: flex; justify-content: center; align-items: center; gap: 4px; background: rgba(0,0,0,0.15); border: 2px dashed rgba(255,255,255,0.2); border-radius: 10px; pointer-events: none; }
         .slot-0 { bottom: 200px; left: 50%; transform: translateX(-50%); }
         .slot-1 { left: 160px; top: 50%; transform: translateY(-50%) rotate(90deg); }
         .slot-2 { top: 200px; left: 50%; transform: translateX(-50%) rotate(180deg); }
         .slot-3 { right: 160px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
+        
         .slot .revealed-card { width: 40px; height: 60px; background: white; color: black; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; border: 2px solid #333; }
         .slot .revealed-card.red-p { color: var(--red); border-color: var(--red); }
         .slot .hidden-win { background: #555 !important; border-color: #333 !important; color: transparent !important; }
+        
         .tricks { display: flex; gap: 2px; height: 25px; justify-content: center; margin-bottom: 5px; flex-wrap: wrap; max-width: 250px; margin: 0 auto; }
         .trick-tag { width: 22px; height: 22px; background: #fff; color: #000; font-size: 13px; font-weight: bold; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid #333; }
         .trick-tag.red-p { color: var(--red); border-color: var(--red); }
+
+        /* 規則按鈕與彈窗 */
+        #rule-btn { position: fixed; top: 20px; left: 20px; padding: 10px 20px; background: rgba(0,0,0,0.5); border: 1px solid var(--gold); color: var(--gold); border-radius: 20px; cursor: pointer; z-index: 1000; }
+        #rule-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 20000; padding: 20px; }
+        .rule-content { background: #2c3e50; border: 2px solid var(--gold); padding: 25px; border-radius: 15px; max-width: 450px; line-height: 1.5; font-size: 14px; }
+
         #settlement-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 10000; }
         button { padding: 15px 35px; background: #e67e22; color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: bold; font-size: 18px; }
         button:disabled { background: #7f8c8d; cursor: not-allowed; }
         input#nick-in { padding: 12px; width: 80%; border-radius: 10px; border: 2px solid var(--gold); background: #34495e; color: white; font-size: 16px; margin-bottom: 20px; }
+
+        @media (max-width: 768px) {
+            .table { width: 95vw; height: 95vw; border-width: 6px; }
+            .player { width: 280px; }
+            .p-1 { left: -110px; }
+            .p-3 { right: -110px; }
+            .card { width: 45px; height: 70px; font-size: 24px; }
+            .slot .revealed-card { width: 45px; height: 70px; font-size: 24px; }
+            .hand { gap: 3px; min-height: 90px; }
+            .controls { bottom: 20px; right: 0; left: 0; display: flex; justify-content: center; }
+            #main-btn { width: 80%; padding: 20px; font-size: 22px; border-radius: 40px; }
+            .slot-0 { bottom: 160px; }
+            .slot-2 { top: 160px; }
+            #rule-btn { top: auto; bottom: 100px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); }
+        }
     </style>
 </head>
 <body>
 
-<div id="timer-box" style="position:absolute; top:20px; right:20px; font-size:36px; font-weight:bold; color:#e74c3c; background:rgba(0,0,0,0.6); padding:5px 20px; border-radius:10px; display:none;">30</div>
+<button id="rule-btn" onclick="toggleRules(true)">📖 遊戲規則</button>
+
+<div id="rule-modal" onclick="toggleRules(false)">
+    <div class="rule-content" onclick="event.stopPropagation()">
+        <h3 style="color:var(--gold); margin-top:0; text-align:center;">🎴 象棋吃墩規則說明</h3>
+        <div style="text-align: left; max-height: 400px; overflow-y: auto;">
+            <p><b>● 叫牌與牌型：</b>首家擲骰決定。合法牌型含單張、對子、同子(多隻兵/卒)、或特定順子(將士象/車馬包類)。順子僅需含三種主牌，可加入重複牌達成「X順子」，如：俥瑪瑪砲(四順子)，最高六順子。</p>
+            <p><b>● 跟牌勝負：</b>需跟隨相同張數與牌型。<b>紅色牌 > 黑色牌</b>（如紅兵對大於黑卒對）。大牌者得墩並獲得下輪控牌權。</p>
+            <p><b>● 結算基準：</b>每局8墩，5墩為基準，每墩基礎20分。末輪贏家為結算者，其餘三家若低於基準需支付金額給結算者。</p>
+            <p><b>● 全壘打：</b>單一玩家贏下全部 8 墩，其餘玩家需支付<b>雙倍金額</b>給該玩家。</p>
+        </div>
+        <button onclick="toggleRules(false)" style="width:100%; padding:10px; margin-top:15px;">回到牌桌</button>
+    </div>
+</div>
+
+<div id="timer-box" style="position:absolute; top:20px; right:20px; font-size:36px; font-weight:bold; color:#e74c3c; background:rgba(0,0,0,0.6); padding:5px 20px; border-radius:10px; display:none; z-index: 10002;">30</div>
 <div id="toast" style="position:fixed; top:20%; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.9); color:var(--gold); padding:15px 30px; border:2px solid var(--gold); border-radius:10px; display:none; z-index:99999; font-size:20px; font-weight:bold;"></div>
 
-<div id="lobby" style="position:absolute; width:400px; background:#2c3e50; padding:40px; border-radius:20px; text-align:center; border:3px solid var(--gold); z-index:10001;">
+<div id="lobby" style="position:absolute; width:320px; background:#2c3e50; padding:30px; border-radius:20px; text-align:center; border:3px solid var(--gold); z-index:10001;">
     <h2 style="color:var(--gold);">象棋吃墩 PVP</h2>
     <div id="lobby-init-name">
         <input type="text" id="nick-in" placeholder="請輸入您的暱稱" maxlength="10">
@@ -60,11 +104,11 @@
 </div>
 
 <div id="settlement-overlay">
-    <div style="background:#2c3e50; border:3px solid var(--gold); padding:30px; border-radius:15px; width:420px; text-align:center;">
+    <div style="background:#2c3e50; border:3px solid var(--gold); padding:30px; border-radius:15px; width:85%; max-width:420px; text-align:center;">
         <h2 style="color:var(--gold);">本局結算</h2>
         <div id="last-winner-info" style="color:white; margin-bottom:15px; font-weight:bold;"></div>
         <div id="result-list"></div>
-        <button onclick="requestNextGame()" style="margin-top:20px;">下一局遊戲</button>
+        <button onclick="requestNextGame()" style="margin-top:20px; width:100%;">下一局遊戲</button>
     </div>
 </div>
 
@@ -80,6 +124,8 @@
 <div class="controls" style="position:absolute; bottom:30px; right:30px;"><button id="main-btn" onclick="flow()" disabled>等待中</button></div>
 
 <script>
+    function toggleRules(show) { document.getElementById('rule-modal').style.display = show ? 'flex' : 'none'; }
+
     const CHESS_DATA = [
         {n:'帥', v:7, r:true}, {n:'仕', v:6, r:true}, {n:'仕', v:6, r:true}, {n:'相', v:5, r:true}, {n:'相', v:5, r:true},
         {n:'俥', v:4, r:true}, {n:'俥', v:4, r:true}, {n:'瑪', v:3, r:true}, {n:'瑪', v:3, r:true}, {n:'砲', v:2, r:true}, {n:'砲', v:2, r:true},
@@ -101,33 +147,23 @@
         document.getElementById('btn-join').style.display = 'block';
     }
 
-    // 核心牌型判定邏輯修正
     function getPattern(cards) {
         if (!cards || cards.length === 0) return null;
         const len = cards.length;
         const isAllRed = cards.every(c => c.r);
         const isAllBlack = cards.every(c => !c.r);
         if (!isAllRed && !isAllBlack) return null;
-
         const ns = cards.map(c => c.n);
-        const vSum = cards.reduce((s, c) => s + c.v + (c.r ? 0.1 : 0), 0);
-
+        const vSum = cards.reduce((s, c) => s + c.v + (c.r ? 0.5 : 0), 0); // 加大紅牌權重 (0.5 > 0)
         if (len === 1) return { name: "單", pwr: vSum };
-        if ([...new Set(ns)].length === 1 && len >= 2) return { name: "對", pwr: 1000 * len + vSum };
-
+        if ([...new Set(ns)].length === 1 && len >= 2) return { name: "同子", pwr: 1000 * len + vSum };
         const groupA = isAllRed ? ['帥', '仕', '相'] : ['將', '士', '象'];
         const groupB = isAllRed ? ['俥', '瑪', '砲'] : ['車', '馬', '包'];
-
         const hasA = groupA.every(name => ns.includes(name));
         const onlyA = ns.every(name => groupA.includes(name));
         const hasB = groupB.every(name => ns.includes(name));
         const onlyB = ns.every(name => groupB.includes(name));
-
-        if ((hasA && onlyA) || (hasB && onlyB)) return { name: "順", pwr: 2000 * len + vSum };
-
-        const targetSoldier = isAllRed ? '兵' : '卒';
-        if (len === 5 && ns.every(n => n === targetSoldier)) return { name: "五兵", pwr: 5000 + vSum };
-
+        if ((hasA && onlyA) || (hasB && onlyB)) return { name: "順子", pwr: 2000 * len + vSum };
         return null;
     }
 
@@ -302,15 +338,29 @@
         let diffs = [0,0,0,0];
         let finalCounts = trickHistory.map(h => h.length); 
         let baseTricks = 5, perTrickRate = 20, totalFlow = 0;
-
-        finalCounts.forEach((count, i) => {
-            if (i !== lastWinnerIdx) {
-                let personalDiff = (count - baseTricks) * perTrickRate;
-                diffs[i] = personalDiff;
-                totalFlow += personalDiff;
+        
+        // 檢查是否有全壘打
+        let slamWinner = finalCounts.findIndex(c => c === 8);
+        if (slamWinner !== -1) {
+            for(let i=0; i<4; i++) {
+                if(i !== slamWinner) {
+                    diffs[i] = -60 * 2; // (5-8)*20 * 2倍 = -120
+                    totalFlow += diffs[i];
+                }
             }
-        });
-        diffs[lastWinnerIdx] = -totalFlow;
+            diffs[slamWinner] = -totalFlow;
+        } else {
+            // 普通結算：最後一輪贏家為結算者 (lastWinnerIdx)
+            for(let i=0; i<4; i++) {
+                if (i !== lastWinnerIdx) {
+                    let d = (finalCounts[i] - baseTricks) * perTrickRate;
+                    diffs[i] = d;
+                    totalFlow += d;
+                }
+            }
+            diffs[lastWinnerIdx] = -totalFlow;
+        }
+        
         for(let i=0; i<4; i++) balances[i] += diffs[i];
         broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalCounts, lastWinner: names[lastWinnerIdx]});
     }
