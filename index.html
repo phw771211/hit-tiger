@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>象棋吃墩 PVP v31.0 - 同步強化修正版</title>
+    <title>象棋吃墩 PVP v31.1 - 墩數結算修正版</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
@@ -233,7 +233,6 @@
         }
         if (data.type === 'CONFIRM_OK') {
             hasConfirmed[data.idx] = true;
-            // 房主發送過來的跟牌資料，確保客端 tableCards 也是最新的
             if (data.cards) tableCards[data.idx] = data.cards; 
             if (data.idx === myIndex) { confirmedIDs = [...selectedIDs]; selectedIDs = []; state = "WAITING"; }
             const uiIdx = (data.idx - myIndex + 4) % 4;
@@ -242,19 +241,19 @@
         }
         if (data.type === 'FORCE_BATTLE') {
             state = "ANIMATING"; hideToast(); 
-            tableCards = data.tableCards; // 徹底覆蓋客端的 tableCards，解決白牌問題
+            tableCards = data.tableCards; 
             for(let i=0; i<4; i++) {
                 const ids = tableCards[i].map(c => c.id);
                 hands[i] = hands[i].filter(card => !ids.includes(card.id));
             }
             trickHistory[data.winIdx].push(...data.wonCards);
-            roundWinnerRecords = data.roundWinnerRecords; // 房主發來的紀錄必須同步，解決墩數加總問題
+            roundWinnerRecords = data.roundWinnerRecords; 
             runBattleAnimation(data.winIdx, data.callerIdx);
         }
         if (data.type === 'PLAY_ACTION' && isHost) serverReceiveAction(senderIdx, data.cards);
         if (data.type === 'SETTLE_ALL') { 
             balances = data.balances; 
-            roundWinnerRecords = data.roundWinnerRecords || roundWinnerRecords; // 最後結算再同步一次
+            // 修正：直接使用房主算好的 counts 顯示結算
             showSettle(data.diffs, data.counts, data.lastWinner); 
         }
         if (data.type === 'MSG') showToast(data.msg);
@@ -288,7 +287,6 @@
     function serverReceiveAction(idx, cards) {
         if (hasConfirmed[idx]) return;
         tableCards[idx] = cards; hasConfirmed[idx] = true;
-        // 房主確認收牌後，將該玩家出的牌也廣播出去，確保客端知道出了什麼
         broadcast({type: 'CONFIRM_OK', idx, cardCount: cards.length, cards: cards});
         if (currentCall === null) {
             let pat = getPattern(cards);
@@ -309,6 +307,7 @@
         roundWinnerRecords.push(winIdx);
         broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: [...tableCards[winIdx]], roundWinnerRecords});
         setTimeout(() => {
+            // 當前手牌剩下 0 時，代表 8 輪已結束
             if (hands[0].length === 0) serverFinalSettle(winIdx);
             else { turn = winIdx; currentCall = null; hasConfirmed = [false, false, false, false]; serverSyncLocal(); }
         }, 4000);
@@ -324,6 +323,7 @@
 
     function serverFinalSettle(lastWinnerIdx) {
         let finalCounts = [0,0,0,0], diffs = [0,0,0,0], totalFlow = 0;
+        // 房主端絕對統計
         roundWinnerRecords.forEach(idx => finalCounts[idx]++);
 
         let slamWinner = finalCounts.findIndex(c => c === 8);
@@ -335,7 +335,8 @@
             diffs[lastWinnerIdx] = -totalFlow;
         }
         for(let i=0; i<4; i++) balances[i] += diffs[i];
-        broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalCounts, lastWinner: names[lastWinnerIdx], roundWinnerRecords});
+        // 修正：發送 counts (墩數統計) 給客端
+        broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalCounts, lastWinner: names[lastWinnerIdx]});
     }
 
     function sortHand() { hands[myIndex].sort((a,b) => (b.v !== a.v) ? b.v - a.v : (b.r ? -1 : 1)); }
@@ -383,7 +384,6 @@
         let curMax = -1;
         for(let i=0; i<4; i++) {
             let p = (callerIdx + i) % 4, sIdx = (p - myIndex + 4) % 4;
-            // 這裡確保從 tableCards 讀取最新數據
             let pCards = tableCards[p];
             if (!pCards || pCards.length === 0) continue; 
             let pPat = getPattern(pCards);
@@ -402,11 +402,14 @@
     function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(() => { if(!currentCall) t.style.display = 'none'; }, 2500); }
     function showPersistentToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; }
     function hideToast() { document.getElementById('toast').style.display = 'none'; }
+    
+    // 關鍵修正：確保 counts 是由房主傳遞過來的 finalCounts
     function showSettle(diffs, counts, lastWinner) {
         document.getElementById('last-winner-info').innerText = `🏆 最後贏家為結算者：${lastWinner}`;
         const list = document.getElementById('result-list'); list.innerHTML = '';
         for(let i=0; i<4; i++) {
             let wIdx = (i + myIndex) % 4;
+            // 直接顯示房主統計好的 counts[wIdx]
             list.innerHTML += `<div style="display:flex; justify-content:space-between; margin:5px 0;"><span>${names[wIdx]} (${counts[wIdx]}墩)</span><span style="color:${diffs[wIdx]>=0?'#2ecc71':'#e74c3c'}">${diffs[wIdx]>=0?'+':''}${diffs[wIdx]}</span></div>`;
         }
         document.getElementById('settlement-overlay').style.display = 'flex';
