@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>象棋吃墩 PVP v30.52 - 全屏自適應版</title>
+    <title>象棋吃墩 PVP v30.53 - 狀態同步版</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
@@ -15,7 +15,6 @@
             height: 100vh; height: -webkit-fill-available; margin: 0; overflow: hidden; 
         }
         
-        /* 自適應牌桌：取螢幕寬高最小值的 90% */
         .table { 
             width: 92vmin; height: 92vmin; 
             background: var(--table); border: 8px solid #5d4037; border-radius: 50%; 
@@ -23,7 +22,6 @@
             transition: all 0.3s ease;
         }
         
-        /* 玩家區域定位優化 */
         .player { position: absolute; text-align: center; width: 40%; z-index: 10; padding: 5px; }
         .p-0 { bottom: 2%; left: 50%; transform: translateX(-50%); }
         .p-1 { left: 2%; top: 50%; transform: translateY(-50%) rotate(90deg); }
@@ -36,7 +34,6 @@
 
         .hand { display: flex; gap: 2px; justify-content: center; min-height: 50px; flex-wrap: nowrap; width: 100%; overflow: visible; }
         
-        /* 卡牌大小隨螢幕縮放 */
         .card { 
             width: 8vmin; height: 12vmin; max-width: 45px; max-height: 65px;
             background: white; color: black; border-radius: 4px; 
@@ -49,7 +46,6 @@
         .card.confirmed { opacity: 0.4; filter: grayscale(0.8); }
         .card.back { background: var(--card-back) !important; color: transparent !important; border-color: #fff; }
         
-        /* 出牌槽位：位於牌桌中心與玩家之間 */
         .slot { 
             position: absolute; width: 25%; height: 15%; 
             display: flex; justify-content: center; align-items: center; gap: 2px; 
@@ -78,11 +74,14 @@
         .controls { position:fixed; bottom: 5%; width: 100%; display: flex; justify-content: center; z-index: 100; pointer-events: none; }
         #main-btn { pointer-events: auto; padding: 12px 30px; background: #e67e22; color: white; border: none; border-radius: 25px; font-size: 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
 
-        /* 大廳與結算 UI 適配 */
         #lobby, #settlement-overlay { z-index: 10001; position: fixed; inset: 0; display: flex; justify-content: center; align-items: center; background: rgba(0,0,0,0.8); }
         .panel { background:#2c3e50; padding: 20px; border-radius: 20px; border:3px solid var(--gold); width: 85%; max-width: 320px; text-align: center; }
         
         input#nick-in { width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 8px; border: none; }
+        
+        /* 等待提示動畫 */
+        .waiting-text { color: #aaa; font-style: italic; font-size: 13px; margin-top: 15px; animation: blink 1.5s infinite; }
+        @keyframes blink { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
     </style>
 </head>
 <body>
@@ -115,7 +114,10 @@
             <p id="player-count">(1/4)</p>
             <div id="player-list" style="text-align:left; margin:10px 0; font-size:14px;"></div>
             <input type="text" id="copy-url" readonly onclick="this.select();" style="width:100%; padding:5px; font-size:10px; background:#34495e; color:white; border:none;">
-            <button id="btn-roll" onclick="hostRollDice()" style="margin-top:15px; width:100%;">🎲 擲骰起手</button>
+            
+            <button id="btn-roll" onclick="hostRollDice()" style="margin-top:15px; width:100%; display:none;">🎲 擲骰起手</button>
+            
+            <div id="wait-host-msg" class="waiting-text" style="display:none;">⏳ 等待房主擲骰決定首位玩家...</div>
         </div>
     </div>
 </div>
@@ -141,7 +143,6 @@
 <div class="controls"><button id="main-btn" onclick="flow()" disabled>等待中</button></div>
 
 <script>
-    // 原始邏輯與 PeerJS 功能完全保留
     function toggleRules(show) { document.getElementById('rule-modal').style.display = show ? 'flex' : 'none'; }
 
     const CHESS_DATA = [
@@ -205,7 +206,11 @@
         const activeNames = names.filter(n => n !== "");
         document.getElementById('player-count').innerText = `(${activeNames.length}/4)`;
         document.getElementById('player-list').innerHTML = activeNames.map(n => `<div>• ${n}</div>`).join('');
-        if (activeNames.length === 4) document.getElementById('btn-roll').style.display = 'block';
+        
+        // 房主控制按鈕與提示
+        if (activeNames.length === 4) {
+            document.getElementById('btn-roll').style.display = 'block';
+        }
         broadcast({type: 'LOBBY_SYNC', names, count: activeNames.length});
     }
 
@@ -222,6 +227,13 @@
             document.getElementById('lobby-status').style.display = 'block';
             document.getElementById('player-count').innerText = `(${data.count}/4)`;
             document.getElementById('player-list').innerHTML = names.filter(n => n !== "").map(n => `<div>• ${n}</div>`).join('');
+            
+            // 非房主玩家：若人數滿4人，顯示等待提示
+            if (!isHost && data.count === 4) {
+                document.getElementById('wait-host-msg').style.display = 'block';
+            } else {
+                document.getElementById('wait-host-msg').style.display = 'none';
+            }
         }
         if (data.type === 'INIT') {
             myIndex = data.index; document.getElementById('lobby').style.display = 'none';
