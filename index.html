@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>象棋吃墩 PVP - Milestone 1.2 穩定恢復版</title>
+    <title>象棋吃墩 PVP - Milestone 1.2 (1.1代碼完全封裝版)</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        /* 嚴格遵守 Milestone 1.1 UI，不做任何修改 */
+        /* 完全遵循 Milestone 1.1 的所有顏色設定、字體與組件大小 */
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
         * { box-sizing: border-box; }
         body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
@@ -51,6 +51,8 @@
         .controls { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 100; }
         #main-btn { padding: 15px 50px; font-size: 20px; }
         .rules-btn { position: fixed; top: 20px; left: 20px; z-index: 10005; background: #2980b9; border-radius: 10px; padding: 10px 15px; font-size: 14px; }
+        .rules-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 10006; padding: 20px; }
+        .rules-content { background: #ecf0f1; color: #2c3e50; padding: 25px; border-radius: 15px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; text-align: left; line-height: 1.6; }
     </style>
 </head>
 <body>
@@ -58,12 +60,14 @@
 <div id="timer-box">30</div>
 <div id="toast"></div>
 
-<button class="rules-btn" onclick="document.getElementById('rules-overlay').style.display='flex'">📜 規則</button>
-<div id="rules-overlay" style="position:fixed; inset:0; background:rgba(0,0,0,0.85); display:none; justify-content:center; align-items:center; z-index:10006;" onclick="this.style.display='none'">
-    <div class="panel" style="width:90%; max-width:400px; text-align:left; color:#ecf0f1;" onclick="event.stopPropagation()">
-        <h3>象棋吃墩規則</h3>
-        <p>跟牌需張數一致。紅牌 > 黑牌。5 墩為準，多得或少得墩數將影響結算分數。</p>
-        <button onclick="document.getElementById('rules-overlay').style.display='none'" style="width:100%;">關閉</button>
+<button class="rules-btn" onclick="toggleRules(true)">📜 遊戲規則</button>
+<div id="rules-overlay" class="rules-overlay" onclick="toggleRules(false)">
+    <div class="rules-content" onclick="event.stopPropagation()">
+        <h3>象棋吃墩遊戲規則</h3>
+        <p><b>叫牌與牌型：</b>首家由房主擲骰決定。出牌者可出的合法牌型包括：單張、對子、同子（多張相同的兵或卒）以及順子（將士象、士象全或俥瑪砲等組合）。特別注意：順子可包含重複的牌（例如「將士士象」或「俥俥瑪瑪砲砲」）。</p>
+        <p><b>跟牌勝負：</b>後家必須跟出與首家張數及牌型相同的牌。若無法跟出，則視為棄權。紅牌絕對大於黑牌（例如紅兵對勝過黑卒對）。同色牌則比較數值大小。大牌者獲得該墩並擁有下一輪的叫牌權。</p>
+        <p><b>結算與全壘打：</b>每局以 5 墩為基準，每墩價值 20 分。若某玩家獲得 8 墩，則達成「全壘打」，其餘三家需支付雙倍分數。最終回合贏家即為該局結算者，負責計算所有分數流向。</p>
+        <button style="width:100%; margin-top:15px;" onclick="toggleRules(false)">確定</button>
     </div>
 </div>
 
@@ -107,6 +111,7 @@
 <div class="controls"><button id="main-btn" onclick="flow()" disabled>等待中</button></div>
 
 <script>
+    // 原始 Milestone 1.1 核心數據與變數
     const CHESS_DATA = [
         {n:'帥', v:7, r:true}, {n:'仕', v:6, r:true}, {n:'仕', v:6, r:true}, {n:'相', v:5, r:true}, {n:'相', v:5, r:true},
         {n:'俥', v:4, r:true}, {n:'俥', v:4, r:true}, {n:'瑪', v:3, r:true}, {n:'瑪', v:3, r:true}, {n:'砲', v:2, r:true}, {n:'砲', v:2, r:true},
@@ -126,7 +131,7 @@
 
     const rid = (new URLSearchParams(window.location.search)).get('room');
 
-    // --- 關鍵恢復邏輯 ---
+    // --- 完全封裝的斷線重連邏輯 ---
     window.onload = () => {
         const savedNick = localStorage.getItem('chess_nick');
         const savedId = localStorage.getItem('chess_peer_id');
@@ -136,11 +141,12 @@
             document.getElementById('btn-host').style.display = 'none';
             document.getElementById('btn-join').style.display = 'block';
             if (savedNick && savedId) {
-                console.log("發現舊存檔，啟動靜默恢復...");
-                joinRoomAction(true); // 自動模式
+                joinRoomAction(true); // 自動模式：嘗試接續
             }
         }
     };
+
+    function toggleRules(show) { document.getElementById('rules-overlay').style.display = show ? 'flex' : 'none'; }
 
     function createRoom() {
         if (isProcessing) return; isProcessing = true;
@@ -161,10 +167,9 @@
                 conn.on('data', (d) => {
                     if (d.type === 'JOIN') {
                         let idx = playerPeerIds.indexOf(d.peerId);
-                        if (idx !== -1) {
+                        if (idx !== -1) { // 識別為回歸玩家
                             connections[idx - 1] = conn; 
                             conn.send({ type: 'RECOVER', index: idx, names, balances, hands, trickHistory, turn, currentCall, hasConfirmed, roundWinners });
-                            // 關鍵：補發當前遊戲狀態同步，確保重連玩家能立刻出牌
                             setTimeout(() => { conn.send({ type: 'SYNC', turn, currentCall, hasConfirmed }); }, 300);
                         } else if (connections.length < 3) {
                             connections.push(conn);
@@ -197,10 +202,9 @@
                 hostConn.on('data', (d) => handleData(d, 0));
             });
         });
-
         peer.on('error', (err) => {
             if (err.type === 'unavailable-id' && isAuto) {
-                setTimeout(() => joinRoomAction(true), 1500); // 循環重試直至 PeerJS Server 釋放舊 ID
+                setTimeout(() => joinRoomAction(true), 2000); // 延長重試間隔
             } else {
                 isProcessing = false;
                 document.getElementById('btn-join').disabled = false;
@@ -219,7 +223,10 @@
         if (data.type === 'INIT' || data.type === 'RECOVER') {
             myIndex = data.index;
             if (data.type === 'RECOVER') {
-                Object.assign(window, { names: data.names, balances: data.balances, hands: data.hands, trickHistory: data.trickHistory, turn: data.turn, currentCall: data.currentCall, hasConfirmed: data.hasConfirmed, roundWinners: data.roundWinners });
+                names = data.names; balances = data.balances; hands = data.hands; 
+                trickHistory = data.trickHistory; turn = data.turn; 
+                currentCall = data.currentCall; hasConfirmed = data.hasConfirmed; 
+                roundWinners = data.roundWinners;
             }
             document.getElementById('lobby').style.display = 'none';
             document.getElementById('main-table').style.display = 'block';
@@ -253,7 +260,7 @@
         if (isHost && data.type === 'REQ_NEXT') serverStartRound();
     }
 
-    // --- 房主伺服器邏輯 ---
+    // --- 房主伺服器邏輯 (完全保留) ---
     function broadcast(data) {
         if (isHost) { connections.forEach(c => c && c.send(data)); handleData(data, 0); }
         else if (hostConn) hostConn.send(data);
@@ -312,7 +319,7 @@
         broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalTricks, lastWinner: names[lastWinnerIdx]});
     }
 
-    // --- 輔助工具 ---
+    // --- 輔助工具 (完全保留) ---
     function sortHand() { hands[myIndex].sort((a,b) => (b.v !== a.v) ? b.v - a.v : (b.r ? -1 : 1)); }
     function getPattern(cards) {
         if (!cards || cards.length === 0) return null;
@@ -390,7 +397,7 @@
     function showPersistentToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; }
     function hideToast() { document.getElementById('toast').style.display = 'none'; }
     function showSettle(diffs, counts, lastWinner) {
-        document.getElementById('last-winner-info').innerText = `🏆 結算者：${lastWinner}`;
+        document.getElementById('last-winner-info').innerText = `🏆 最後贏家為結算者：${lastWinner}`;
         const list = document.getElementById('result-list'); list.innerHTML = '';
         for(let i=0; i<4; i++) {
             let wIdx = (i + myIndex) % 4;
