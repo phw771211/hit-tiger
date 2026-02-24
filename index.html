@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>象棋吃墩 PVP - Milestone 1.3 (Fixed V2)</title>
+    <title>象棋吃墩 PVP - Milestone 1.3 (Fixed V3)</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        /* 嚴格遵守 Milestone 1.1/1.2 的所有 UI 與顏色設定 */
+        /* 嚴格遵守 Milestone 1.1/1.2 的 UI 與顏色設定 */
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
         * { box-sizing: border-box; }
         body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
@@ -65,7 +65,7 @@
     <div class="rules-content" onclick="event.stopPropagation()">
         <h3>象棋吃墩遊戲規則</h3>
         <p><b>叫牌與牌型：</b>首家由擲骰決定。出牌者可出的合法牌型包括：單張、對子、同子以及順子。特別注意：順子可包含重複的牌。</p>
-        <p><b>跟牌勝負：</b>後家必須跟出與首家張數及牌型相同的牌。若無法跟出，則視為棄權。紅牌絕對大於黑牌。大牌者獲得該墩並擁有下一輪的叫牌權。</p>
+        <p><b>跟牌勝負：</b>後家必須跟出與首家張數及牌型相同的牌。紅牌絕對大於黑牌。大牌者獲得該墩並擁有下一輪的叫牌權。</p>
         <p><b>結算與全壘打：</b>每局以 5 墩為基準，每墩價值 20 分。若某玩家獲得 8 墩，則達成「全壘打」，其餘三家需支付雙倍分數。</p>
         <button style="width:100%; margin-top:15px;" onclick="toggleRules(false)">確定</button>
     </div>
@@ -146,9 +146,7 @@
         if (isProcessing) return; isProcessing = true;
         const myName = document.getElementById('nick-in').value || "房主";
         localStorage.setItem('chess_nick', myName);
-        peer = new Peer(); 
-        isHost = true;
-        myIndex = 0; // 強制房主 Index 為 0
+        peer = new Peer(); isHost = true; myIndex = 0;
         peer.on('open', (id) => {
             playerPeerIds[0] = id; names[0] = myName;
             document.getElementById('copy-url').value = location.origin + location.pathname + "?room=" + id;
@@ -162,7 +160,7 @@
                     if (d.type === 'JOIN') {
                         if (connections.length < 3) {
                             connections.push(conn);
-                            let nIdx = connections.length; // 1, 2, 3
+                            let nIdx = connections.length;
                             playerPeerIds[nIdx] = d.peerId; names[nIdx] = d.name;
                             updateLobbyNames();
                         }
@@ -189,22 +187,43 @@
         });
     }
 
+    function updateLobbyNames() {
+        const activeCount = names.filter(n=>n!=="").length;
+        document.getElementById('player-count').innerText = `(${activeCount}/4)`;
+        document.getElementById('player-list').innerHTML = names.filter(n=>n!=="").map(n=>`<div>• ${n}</div>`).join('');
+        if (isHost) {
+            broadcast({type: 'LOBBY_SYNC', names, count: activeCount});
+            if (activeCount === 4) {
+                document.getElementById('wait-msg').innerText = "玩家已齊全，發牌中並準備入桌...";
+                // 房主負責洗牌
+                let deck = [...CHESS_DATA].map(c => ({...c, id: Math.random()})).sort(() => Math.random() - 0.5);
+                let gameHands = [[],[],[],[]];
+                for(let r=0; r<8; r++) for(let i=0; i<4; i++) gameHands[i].push(deck.pop());
+                
+                setTimeout(() => {
+                    for(let i=0; i<4; i++) {
+                        const payload = {type: 'INIT', index: i, names, state: "WAIT_DICE", diceTurn: 0, hands: gameHands};
+                        if (i === 0) handleData(payload, 0); 
+                        else connections[i-1].send(payload);
+                    }
+                }, 1500);
+            }
+        }
+    }
+
     function handleData(data, senderIdx) {
         if (data.type === 'LOBBY_SYNC') {
             names = data.names;
             document.getElementById('player-count').innerText = `(${data.count}/4)`;
             document.getElementById('player-list').innerHTML = names.filter(n=>n!=="").map(n=>`<div>• ${n}</div>`).join('');
         }
-        if (data.type === 'INIT' || data.type === 'RECOVER') {
-            myIndex = data.index;
-            names = data.names; 
-            state = data.state || "WAIT_DICE";
-            diceTurn = data.diceTurn || 0;
+        if (data.type === 'INIT') {
+            myIndex = data.index; names = data.names; state = data.state; diceTurn = data.diceTurn; hands = data.hands;
+            sortHand();
             document.getElementById('lobby').style.display = 'none';
             document.getElementById('main-table').style.display = 'block';
             render();
         }
-        // ... (其餘數據處理邏輯保持不變，嚴格遵循 Milestone 1.2)
         if (data.type === 'SYNC') {
             state = "PLAYING"; hideToast();
             turn = data.turn; currentCall = data.currentCall; hasConfirmed = data.hasConfirmed; 
@@ -215,9 +234,7 @@
         }
         if (data.type === 'DISTRIBUTE') { 
             document.getElementById('settlement-overlay').style.display = 'none'; 
-            resetRoundState(); hands = data.hands; sortHand(); 
-            state = "WAIT_DICE"; diceTurn = data.diceTurn;
-            render(); 
+            resetRoundState(); hands = data.hands; sortHand(); state = "WAIT_DICE"; diceTurn = data.diceTurn; render(); 
         }
         if (data.type === 'CONFIRM_OK') {
             hasConfirmed[data.idx] = true;
@@ -232,38 +249,12 @@
             trickHistory[data.winIdx].push(...data.wonCards);
             runBattleAnimation(data.winIdx, data.callerIdx);
         }
-        if (data.type === 'SETTLE_ALL') { 
-            balances = data.balances; diceTurn = data.winIdx; 
-            showSettle(data.diffs, data.counts, data.lastWinner, data.winIdx); 
-        }
+        if (data.type === 'SETTLE_ALL') { balances = data.balances; diceTurn = data.winIdx; showSettle(data.diffs, data.counts, data.lastWinner, data.winIdx); }
         if (data.type === 'TIMER') document.getElementById('timer-box').innerText = data.time;
         if (data.type === 'MSG') showToast(data.msg);
         if (isHost && data.type === 'PLAY_ACTION') serverReceiveAction(senderIdx, data.cards);
         if (isHost && data.type === 'ROLL_DICE') serverHandleRoll();
         if (isHost && data.type === 'REQ_NEXT') serverPrepareNext(data.winIdx);
-    }
-
-    function updateLobbyNames() {
-        const activeCount = names.filter(n=>n!=="").length;
-        document.getElementById('player-count').innerText = `(${activeCount}/4)`;
-        document.getElementById('player-list').innerHTML = names.filter(n=>n!=="").map(n=>`<div>• ${n}</div>`).join('');
-        
-        if (isHost) {
-            // 同步給所有人目前大廳名單
-            broadcast({type: 'LOBBY_SYNC', names, count: activeCount});
-            if (activeCount === 4) {
-                document.getElementById('wait-msg').innerText = "玩家已齊全，準備進入牌桌...";
-                setTimeout(() => {
-                    // 發送 INIT 時，包含每個人對應的 Index
-                    for(let i=0; i<4; i++) {
-                        const targetIdx = i;
-                        const payload = {type: 'INIT', index: targetIdx, names, state: "WAIT_DICE", diceTurn: 0};
-                        if (i === 0) handleData(payload, 0); // 自己
-                        else connections[i-1].send(payload); // 其他三位
-                    }
-                }, 1500);
-            }
-        }
     }
 
     function render() {
@@ -279,8 +270,7 @@
         
         for(let i=0; i<4; i++) {
             let wIdx = (i + myIndex) % 4;
-            const displayName = names[wIdx] || "等待中...";
-            document.getElementById(`name-${i}`).innerText = displayName;
+            document.getElementById(`name-${i}`).innerText = names[wIdx] || "等待中...";
             document.getElementById(`area-${i}`).classList.toggle('active-glow', wIdx === turn && state === "PLAYING");
             document.getElementById(`bal-${i}`).innerText = `$${balances[wIdx]}`;
             document.getElementById(`status-${i}`).innerText = (state === "WAIT_DICE" && wIdx === diceTurn) ? "擲骰中..." : (wIdx === turn && !currentCall && state === "PLAYING") ? "叫牌中" : (currentCall && !hasConfirmed[wIdx]) ? "跟牌中" : (hasConfirmed[wIdx]) ? "✓ 已就緒" : "";
@@ -295,23 +285,14 @@
                         render();
                     }}; h.appendChild(d);
                 });
-            } else hands[wIdx].forEach(() => h.innerHTML += '<div class="card back"></div>');
+            } else if (hands[wIdx]) {
+                hands[wIdx].forEach(() => h.innerHTML += '<div class="card back"></div>');
+            }
             const t = document.getElementById(`t-${i}`); t.innerHTML = '';
             trickHistory[wIdx].forEach(card => { const tag = document.createElement('div'); tag.className = `trick-tag ${card.r ? 'red-p' : ''}`; tag.innerText = card.n; t.appendChild(tag); });
         }
     }
 
-    // --- 以下為遊戲核心邏輯 (與 Milestone 1.2 相同) ---
-    function broadcast(data) {
-        if (isHost) { connections.forEach(c => c && c.send(data)); handleData(data, 0); }
-        else if (hostConn) hostConn.send(data);
-    }
-    function flow() {
-        if (state === "WAIT_DICE") { if (myIndex === diceTurn) broadcast({type: 'ROLL_DICE'}); return; }
-        const played = hands[myIndex].filter(c => selectedIDs.includes(c.id));
-        if (state === "MY_TURN") { if (!getPattern(played)) return showToast("❌ 無效牌型"); broadcast({type: 'PLAY_ACTION', cards: played}); }
-        else if (state === "FOLLOWING") { if (played.length !== (currentCall?currentCall.count:0)) return showToast(`❌ 需出${currentCall?currentCall.count:0}張`); broadcast({type: 'PLAY_ACTION', cards: played}); }
-    }
     function serverHandleRoll() {
         const s = Math.floor(Math.random() * 4);
         broadcast({type: 'MSG', msg: `🎲 ${names[diceTurn]} 擲出了首家：${names[s]}`});
@@ -320,88 +301,22 @@
             broadcast({type: 'SYNC', turn, currentCall, hasConfirmed});
         }, 1500);
     }
-    function serverReceiveAction(idx, cards) {
-        if (hasConfirmed[idx]) return;
-        tableCards[idx] = cards; hasConfirmed[idx] = true;
-        broadcast({type: 'CONFIRM_OK', idx, cardCount: cards.length});
-        if (currentCall === null) {
-            let pat = getPattern(cards); currentCall = {...pat, count: cards.length, callerIdx: idx};
-            let t = 30; clearInterval(timerInterval);
-            timerInterval = setInterval(() => { t--; broadcast({type: 'TIMER', time: t}); if(t<=0){ clearInterval(timerInterval); for(let i=0; i<4; i++) if(!hasConfirmed[i]) serverReceiveAction(i, [hands[i][0]]); } }, 1000);
-            broadcast({type: 'SYNC', turn, currentCall, hasConfirmed});
-        } 
-        if (hasConfirmed.every(v => v === true)) { clearInterval(timerInterval); serverProcessBattle(); }
-    }
-    function serverProcessBattle() {
-        let winIdx = currentCall.callerIdx, maxPwr = currentCall.pwr;
-        for(let i=0; i<4; i++) {
-            let pPat = getPattern(tableCards[i]);
-            if (tableCards[i].length === currentCall.count && pPat && pPat.name === currentCall.name) { if (pPat.pwr > maxPwr) { maxPwr = pPat.pwr; winIdx = i; } }
-        }
-        roundWinners.push({ winner: winIdx, tricks: currentCall.count });
-        broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: [...tableCards[winIdx]]});
-        setTimeout(() => {
-            if (hands[0].length === 0) serverFinalSettle(winIdx);
-            else { turn = winIdx; currentCall = null; hasConfirmed = [false, false, false, false]; broadcast({type: 'SYNC', turn, currentCall, hasConfirmed}); }
-        }, 4000);
-    }
-    function serverFinalSettle(lastWinnerIdx) {
-        let finalTricks = [0,0,0,0], diffs = [0,0,0,0], totalFlow = 0;
-        roundWinners.forEach(record => { finalTricks[record.winner] += record.tricks; });
-        const currentSum = finalTricks.reduce((a, b) => a + b, 0); if (currentSum !== 8) finalTricks[lastWinnerIdx] += (8 - currentSum);
-        let multiplier = finalTricks.some(t => t === 8) ? 2 : 1;
-        for(let i=0; i<4; i++) if (i !== lastWinnerIdx) { let d = (finalTricks[i] - 5) * 20 * multiplier; diffs[i] = d; totalFlow += d; }
-        diffs[lastWinnerIdx] = -totalFlow; for(let i=0; i<4; i++) balances[i] += diffs[i];
-        broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalTricks, lastWinner: names[lastWinnerIdx], winIdx: lastWinnerIdx});
-    }
-    function serverPrepareNext(winIdx) {
-        let deck = [...CHESS_DATA].map(c => ({...c, id: Math.random()})).sort(() => Math.random() - 0.5);
-        let tempHands = [[],[],[],[]]; for(let r=0; r<8; r++) for(let i=0; i<4; i++) tempHands[i].push(deck.pop());
-        broadcast({type: 'DISTRIBUTE', hands: tempHands, diceTurn: winIdx});
-    }
-    function getPattern(cards) {
-        if (!cards || cards.length === 0) return null;
-        const len = cards.length; const isAllRed = cards.every(c => c.r), isAllBlack = cards.every(c => !c.r);
-        if (!isAllRed && !isAllBlack) return null;
-        const vSum = cards.reduce((s, c) => s + c.v + (c.r ? 0.5 : 0), 0);
-        if (len === 1) return { name: "單張", pwr: vSum };
-        if ([...new Set(cards.map(c=>c.n))].length === 1 && len >= 2) return { name: (len === 2 ? "對子" : "同子"), pwr: 1000 * len + vSum };
-        if (len >= 3) {
-            const ns = cards.map(c=>c.n); const u = [...new Set(ns)];
-            const grpA = isAllRed ? ['帥', '仕', '相'] : ['將', '士', '象'], grpB = isAllRed ? ['俥', '瑪', '砲'] : ['車', '馬', '包'];
-            if (u.every(n => grpA.includes(n)) && grpA.every(n => u.includes(n))) return { name: "順子", pwr: 2000 * len + vSum };
-            if (u.every(n => grpB.includes(n)) && grpB.every(n => u.includes(n))) return { name: "順子", pwr: 2000 * len + vSum };
-        }
-        return null;
-    }
-    function sortHand() { hands[myIndex].sort((a,b) => (b.v !== a.v) ? b.v - a.v : (b.r ? -1 : 1)); }
+
+    // --- 核心共用函數 (嚴格保持 Milestone 1.2) ---
+    function broadcast(data) { if (isHost) { connections.forEach(c => c && c.send(data)); handleData(data, 0); } else if (hostConn) hostConn.send(data); }
+    function flow() { if (state === "WAIT_DICE") { if (myIndex === diceTurn) broadcast({type: 'ROLL_DICE'}); return; } const played = hands[myIndex].filter(c => selectedIDs.includes(c.id)); if (state === "MY_TURN") { if (!getPattern(played)) return showToast("❌ 無效牌型"); broadcast({type: 'PLAY_ACTION', cards: played}); } else if (state === "FOLLOWING") { if (played.length !== (currentCall?currentCall.count:0)) return showToast(`❌ 需出${currentCall?currentCall.count:0}張`); broadcast({type: 'PLAY_ACTION', cards: played}); } }
+    function serverReceiveAction(idx, cards) { if (hasConfirmed[idx]) return; tableCards[idx] = cards; hasConfirmed[idx] = true; broadcast({type: 'CONFIRM_OK', idx, cardCount: cards.length}); if (currentCall === null) { let pat = getPattern(cards); currentCall = {...pat, count: cards.length, callerIdx: idx}; let t = 30; clearInterval(timerInterval); timerInterval = setInterval(() => { t--; broadcast({type: 'TIMER', time: t}); if(t<=0){ clearInterval(timerInterval); for(let i=0; i<4; i++) if(!hasConfirmed[i]) serverReceiveAction(i, [hands[i][0]]); } }, 1000); broadcast({type: 'SYNC', turn, currentCall, hasConfirmed}); } if (hasConfirmed.every(v => v === true)) { clearInterval(timerInterval); serverProcessBattle(); } }
+    function serverProcessBattle() { let winIdx = currentCall.callerIdx, maxPwr = currentCall.pwr; for(let i=0; i<4; i++) { let pPat = getPattern(tableCards[i]); if (tableCards[i].length === currentCall.count && pPat && pPat.name === currentCall.name) { if (pPat.pwr > maxPwr) { maxPwr = pPat.pwr; winIdx = i; } } } roundWinners.push({ winner: winIdx, tricks: currentCall.count }); broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: [...tableCards[winIdx]]}); setTimeout(() => { if (hands[0].length === 0) serverFinalSettle(winIdx); else { turn = winIdx; currentCall = null; hasConfirmed = [false, false, false, false]; broadcast({type: 'SYNC', turn, currentCall, hasConfirmed}); } }, 4000); }
+    function serverFinalSettle(lastWinnerIdx) { let finalTricks = [0,0,0,0], diffs = [0,0,0,0], totalFlow = 0; roundWinners.forEach(record => { finalTricks[record.winner] += record.tricks; }); const currentSum = finalTricks.reduce((a, b) => a + b, 0); if (currentSum !== 8) finalTricks[lastWinnerIdx] += (8 - currentSum); let multiplier = finalTricks.some(t => t === 8) ? 2 : 1; for(let i=0; i<4; i++) if (i !== lastWinnerIdx) { let d = (finalTricks[i] - 5) * 20 * multiplier; diffs[i] = d; totalFlow += d; } diffs[lastWinnerIdx] = -totalFlow; for(let i=0; i<4; i++) balances[i] += diffs[i]; broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalTricks, lastWinner: names[lastWinnerIdx], winIdx: lastWinnerIdx}); }
+    function serverPrepareNext(winIdx) { let deck = [...CHESS_DATA].map(c => ({...c, id: Math.random()})).sort(() => Math.random() - 0.5); let tempHands = [[],[],[],[]]; for(let r=0; r<8; r++) for(let i=0; i<4; i++) tempHands[i].push(deck.pop()); broadcast({type: 'DISTRIBUTE', hands: tempHands, diceTurn: winIdx}); }
+    function getPattern(cards) { if (!cards || cards.length === 0) return null; const len = cards.length; const isAllRed = cards.every(c => c.r), isAllBlack = cards.every(c => !c.r); if (!isAllRed && !isAllBlack) return null; const vSum = cards.reduce((s, c) => s + c.v + (c.r ? 0.5 : 0), 0); if (len === 1) return { name: "單張", pwr: vSum }; if ([...new Set(cards.map(c=>c.n))].length === 1 && len >= 2) return { name: (len === 2 ? "對子" : "同子"), pwr: 1000 * len + vSum }; if (len >= 3) { const ns = cards.map(c=>c.n); const u = [...new Set(ns)]; const grpA = isAllRed ? ['帥', '仕', '相'] : ['將', '士', '象'], grpB = isAllRed ? ['俥', '瑪', '砲'] : ['車', '馬', '包']; if (u.every(n => grpA.includes(n)) && grpA.every(n => u.includes(n))) return { name: "順子", pwr: 2000 * len + vSum }; if (u.every(n => grpB.includes(n)) && grpB.every(n => u.includes(n))) return { name: "順子", pwr: 2000 * len + vSum }; } return null; }
+    function sortHand() { if(hands[myIndex]) hands[myIndex].sort((a,b) => (b.v !== a.v) ? b.v - a.v : (b.r ? -1 : 1)); }
     function resetRoundState() { trickHistory=[[],[],[],[]]; selectedIDs=[]; confirmedIDs=[]; currentCall=null; tableCards=[[],[],[],[]]; hasConfirmed=[false,false,false,false]; hideToast(); }
     function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(() => { if(state!=="WAIT_DICE" && !currentCall) t.style.display = 'none'; }, 2500); }
     function showPersistentToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; }
     function hideToast() { document.getElementById('toast').style.display = 'none'; }
-    async function runBattleAnimation(winIdx, callerIdx) {
-        let curMax = -1;
-        for(let i=0; i<4; i++) {
-            let p = (callerIdx + i) % 4, sIdx = (p - myIndex + 4) % 4, pCards = tableCards[p], pPat = getPattern(pCards);
-            let reveal = (i === 0) || (pCards.length === currentCall.count && pPat && pPat.pwr > curMax);
-            if (reveal) curMax = pPat ? pPat.pwr : curMax;
-            document.getElementById(`slot-${sIdx}`).innerHTML = pCards.map(c => `<div class="revealed-card ${reveal ? (c.r?'red-p':'') : 'hidden-win'}">${reveal ? c.n : ''}</div>`).join('');
-            await new Promise(r => setTimeout(r, 700));
-        }
-        await new Promise(r => setTimeout(r, 1500));
-        for(let i=0; i<4; i++) document.getElementById(`slot-${i}`).innerHTML = '';
-        render();
-    }
-    function showSettle(diffs, counts, lastWinner, winIdx) {
-        document.getElementById('last-winner-info').innerText = `🏆 最後贏家為結算者：${lastWinner}`;
-        const list = document.getElementById('result-list'); list.innerHTML = '';
-        for(let i=0; i<4; i++) {
-            let wIdx = (i + myIndex) % 4;
-            list.innerHTML += `<div style="display:flex; justify-content:space-between; margin:5px 0;"><span>${names[wIdx]} (${counts[wIdx]} 墩)</span><span style="color:${diffs[wIdx]>=0?'#2ecc71':'#e74c3c'}">${diffs[wIdx]>=0?'+':''}${diffs[wIdx]}</span></div>`;
-        }
-        document.getElementById('btn-next-ready').onclick = () => { if (isHost) serverPrepareNext(winIdx); else hostConn.send({type: 'REQ_NEXT', winIdx: winIdx}); };
-        document.getElementById('settlement-overlay').style.display = 'flex';
-    }
+    async function runBattleAnimation(winIdx, callerIdx) { let curMax = -1; for(let i=0; i<4; i++) { let p = (callerIdx + i) % 4, sIdx = (p - myIndex + 4) % 4, pCards = tableCards[p], pPat = getPattern(pCards); let reveal = (i === 0) || (pCards.length === currentCall.count && pPat && pPat.pwr > curMax); if (reveal) curMax = pPat ? pPat.pwr : curMax; document.getElementById(`slot-${sIdx}`).innerHTML = pCards.map(c => `<div class="revealed-card ${reveal ? (c.r?'red-p':'') : 'hidden-win'}">${reveal ? c.n : ''}</div>`).join(''); await new Promise(r => setTimeout(r, 700)); } await new Promise(r => setTimeout(r, 1500)); for(let i=0; i<4; i++) document.getElementById(`slot-${i}`).innerHTML = ''; render(); }
+    function showSettle(diffs, counts, lastWinner, winIdx) { document.getElementById('last-winner-info').innerText = `🏆 最後贏家為結算者：${lastWinner}`; const list = document.getElementById('result-list'); list.innerHTML = ''; for(let i=0; i<4; i++) { let wIdx = (i + myIndex) % 4; list.innerHTML += `<div style="display:flex; justify-content:space-between; margin:5px 0;"><span>${names[wIdx]} (${counts[wIdx]} 墩)</span><span style="color:${diffs[wIdx]>=0?'#2ecc71':'#e74c3c'}">${diffs[wIdx]>=0?'+':''}${diffs[wIdx]}</span></div>`; } document.getElementById('btn-next-ready').onclick = () => { if (isHost) serverPrepareNext(winIdx); else hostConn.send({type: 'REQ_NEXT', winIdx: winIdx}); }; document.getElementById('settlement-overlay').style.display = 'flex'; }
 </script>
 </body>
 </html>
