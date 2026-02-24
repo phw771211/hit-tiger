@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>象棋吃墩 PVP - 穩定結算回滾版</title>
+    <title>象棋吃墩 PVP - 規則實作版</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
@@ -48,12 +48,28 @@
         input#nick-in { padding: 12px; width: 100%; border-radius: 10px; border: 2px solid var(--gold); background: #34495e; color: white; margin-bottom: 20px; }
         .controls { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 100; }
         #main-btn { padding: 15px 50px; font-size: 20px; }
+        
+        .rules-btn { position: fixed; top: 20px; left: 20px; z-index: 10005; background: #2980b9; border-radius: 10px; padding: 10px 15px; font-size: 14px; }
+        .rules-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 10006; padding: 20px; }
+        .rules-content { background: #ecf0f1; color: #2c3e50; padding: 25px; border-radius: 15px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; text-align: left; line-height: 1.6; }
+        .rules-content h3 { color: var(--red); text-align: center; margin-top: 0; }
     </style>
 </head>
 <body>
 
 <div id="timer-box">30</div>
 <div id="toast"></div>
+
+<button class="rules-btn" onclick="toggleRules(true)">📜 遊戲規則</button>
+<div id="rules-overlay" class="rules-overlay" onclick="toggleRules(false)">
+    <div class="rules-content" onclick="event.stopPropagation()">
+        <h3>象棋吃墩遊戲規則</h3>
+        <p><b>叫牌與牌型：</b>首家擲骰決定。合法牌型含單張、對子、同子(多兵/卒)及順子(將士象/車馬包類)。順子可包含重複牌，如「將士士象」或「俥俥瑪瑪砲砲」。</p>
+        <p><b>跟牌勝負：</b>須跟張數與牌型。紅牌 > 黑牌（如兵對勝卒對）。大牌者得墩並獲下輪叫牌權。</p>
+        <p><b>結算與全壘打：</b>以 5 墩為基準，每墩 20 分。最終回合贏家為結算者。若達成 8 墩全壘打，其餘玩家支付雙倍。</p>
+        <button style="width:100%; margin-top:15px;" onclick="toggleRules(false)">確定</button>
+    </div>
+</div>
 
 <div id="lobby">
     <div class="panel">
@@ -113,18 +129,34 @@
     const rid = (new URLSearchParams(window.location.search)).get('room');
     if (rid) { document.getElementById('btn-host').style.display = 'none'; document.getElementById('btn-join').style.display = 'block'; }
 
+    function toggleRules(show) {
+        document.getElementById('rules-overlay').style.display = show ? 'flex' : 'none';
+    }
+
+    // 更新後的順子與牌型判定
     function getPattern(cards) {
         if (!cards || cards.length === 0) return null;
         const len = cards.length, ns = cards.map(c => c.n);
         const isAllRed = cards.every(c => c.r), isAllBlack = cards.every(c => !c.r);
         if (!isAllRed && !isAllBlack) return null;
         const vSum = cards.reduce((s, c) => s + c.v + (c.r ? 0.5 : 0), 0);
+        
+        // 單張
         if (len === 1) return { name: "單張", pwr: vSum };
+        
+        // 對子/同子 (多張相同的牌)
         if ([...new Set(ns)].length === 1 && len >= 2) return { name: (len === 2 ? "對子" : "同子"), pwr: 1000 * len + vSum };
-        const groupA = isAllRed ? ['帥', '仕', '相'] : ['將', '士', '象'];
-        const groupB = isAllRed ? ['俥', '瑪', '砲'] : ['車', '馬', '包'];
-        if ((groupA.every(n => ns.includes(n)) && ns.every(n => groupA.includes(n))) || 
-            (groupB.every(n => ns.includes(n)) && ns.every(n => groupB.includes(n)))) return { name: "順子", pwr: 2000 * len + vSum };
+        
+        // 順子 (允許重複牌，且長度 3 張以上)
+        if (len >= 3) {
+            const groupA = isAllRed ? ['帥', '仕', '相'] : ['將', '士', '象'];
+            const groupB = isAllRed ? ['俥', '瑪', '砲'] : ['車', '馬', '包'];
+            const uniqueNs = [...new Set(ns)];
+            const isGroupA = uniqueNs.every(n => groupA.includes(n)) && groupA.every(n => uniqueNs.includes(n));
+            const isGroupB = uniqueNs.every(n => groupB.includes(n)) && groupB.every(n => uniqueNs.includes(n));
+            
+            if (isGroupA || isGroupB) return { name: "順子", pwr: 2000 * len + vSum };
+        }
         return null;
     }
 
@@ -260,12 +292,8 @@
                 if (pPat.pwr > maxPwr) { maxPwr = pPat.pwr; winIdx = i; }
             }
         }
-        
-        // 【修正核心】: 紀錄贏家和對應的出牌張數 (X)
-        roundWinners.push({ winner: winIdx, count: currentCall.count });
-        
+        roundWinners.push({ winner: winIdx, tricks: currentCall.count });
         broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: [...tableCards[winIdx]]});
-        
         setTimeout(() => {
             if (hands[0].length === 0) {
                 serverFinalSettle(winIdx);
@@ -283,36 +311,27 @@
         }, 1000);
     }
 
+    // 更新後的結算與全壘打邏輯
     function serverFinalSettle(lastWinnerIdx) {
-        let finalCounts = [0,0,0,0], diffs = [0,0,0,0], totalFlow = 0;
-        
-        // 按照實際張數統計墩數 (整數累加)
-        roundWinners.forEach(record => {
-            finalCounts[record.winner] += record.count;
-        });
-        
-        // 確保總墩數必為 32 (全場手牌總數)
-        const sum = finalCounts.reduce((a, b) => a + b, 0);
-        if (sum !== 32) finalCounts[lastWinnerIdx] += (32 - sum);
+        let finalTricks = [0,0,0,0], diffs = [0,0,0,0], totalFlow = 0;
+        roundWinners.forEach(record => { finalTricks[record.winner] += record.tricks; });
+        const currentSum = finalTricks.reduce((a, b) => a + b, 0);
+        if (currentSum !== 8) finalTricks[lastWinnerIdx] += (8 - currentSum);
 
-        // 金幣結算邏輯
-        // 基準墩數: 8 張牌 (每人初始手牌數量)
-        // 若贏得 32 墩 (全部吃掉)，即為大滿貫
-        let slamWinner = finalCounts.findIndex(c => c === 32);
-        if (slamWinner !== -1) {
-            for(let i=0; i<4; i++) if(i !== slamWinner) { diffs[i] = -120; totalFlow += 120; }
-            diffs[slamWinner] = totalFlow;
-        } else {
-            for(let i=0; i<4; i++) if (i !== lastWinnerIdx) { 
-                // 超過或少於 8 張基準牌的計算
-                let d = (finalCounts[i] - 8) * 20; 
-                diffs[i] = d; 
-                totalFlow += d; 
-            }
-            diffs[lastWinnerIdx] = -totalFlow;
+        // 檢查是否有人達成 8 墩全壘打
+        let isGrandSlam = finalTricks.some(t => t === 8);
+        let multiplier = isGrandSlam ? 2 : 1;
+
+        // 以 5 墩為基準結算
+        for(let i=0; i<4; i++) if (i !== lastWinnerIdx) { 
+            let d = (finalTricks[i] - 5) * 20 * multiplier; 
+            diffs[i] = d; 
+            totalFlow += d; 
         }
+        diffs[lastWinnerIdx] = -totalFlow;
+        
         for(let i=0; i<4; i++) balances[i] += diffs[i];
-        broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalCounts, lastWinner: names[lastWinnerIdx]});
+        broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalTricks, lastWinner: names[lastWinnerIdx]});
     }
 
     function sortHand() { hands[myIndex].sort((a,b) => (b.v !== a.v) ? b.v - a.v : (b.r ? -1 : 1)); }
@@ -380,7 +399,7 @@
         const list = document.getElementById('result-list'); list.innerHTML = '';
         for(let i=0; i<4; i++) {
             let wIdx = (i + myIndex) % 4;
-            list.innerHTML += `<div style="display:flex; justify-content:space-between; margin:5px 0;"><span>${names[wIdx]} (${counts[wIdx]}張牌)</span><span style="color:${diffs[wIdx]>=0?'#2ecc71':'#e74c3c'}">${diffs[wIdx]>=0?'+':''}${diffs[wIdx]}</span></div>`;
+            list.innerHTML += `<div style="display:flex; justify-content:space-between; margin:5px 0;"><span>${names[wIdx]} (${counts[wIdx]} 墩)</span><span style="color:${diffs[wIdx]>=0?'#2ecc71':'#e74c3c'}">${diffs[wIdx]>=0?'+':''}${diffs[wIdx]}</span></div>`;
         }
         document.getElementById('settlement-overlay').style.display = 'flex';
     }
