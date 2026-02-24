@@ -3,69 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>象棋吃墩 PVP - Milestone 1.3 (Fixed V9)</title>
+    <title>象棋吃墩 PVP - Milestone 1.3 (Fixed V11)</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
         * { box-sizing: border-box; }
         body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
-        
-        /* 規則彈窗樣式 */
         #rule-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 100000; padding: 20px; }
         .rule-content { background: #2c3e50; border: 3px solid var(--gold); border-radius: 20px; padding: 25px; max-width: 550px; max-height: 85vh; overflow-y: auto; text-align: left; line-height: 1.6; font-size: 15px; }
         .rule-content h3 { color: var(--gold); margin-top: 0; text-align: center; border-bottom: 2px solid var(--gold); padding-bottom: 10px; }
-        .rule-content p { margin: 15px 0; }
-        .rule-content b { color: var(--gold); }
-        
         .table-container { width: 700px; height: 700px; display: flex; justify-content: center; align-items: center; }
         @media (max-width: 750px) { .table-container { transform: scale(0.5); } }
         @media (max-width: 400px) { .table-container { transform: scale(0.42); } }
-        
         .table { width: 700px; height: 700px; background: var(--table); border: 12px solid #5d4037; border-radius: 50%; position: relative; box-shadow: inset 0 0 100px #000; display: none; }
         .player { position: absolute; text-align: center; width: 360px; z-index: 10; padding: 10px; border-radius: 15px; border: 2px solid transparent; transition: all 0.3s; }
         .p-0 { bottom: 10px; left: 50%; transform: translateX(-50%); }
         .p-1 { left: -140px; top: 50%; transform: translateY(-50%) rotate(90deg); }
         .p-2 { top: 10px; left: 50%; transform: translateX(-50%) rotate(180deg); }
         .p-3 { right: -140px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
-        .info-container { transform: rotate(0deg); }
-        .p-1 .info-container { transform: rotate(-90deg); }
-        .p-2 .info-container { transform: rotate(-180deg); }
-        .p-3 .info-container { transform: rotate(90deg); }
-        
         .active-glow { background: rgba(241, 196, 15, 0.25); border: 2px solid var(--gold) !important; box-shadow: 0 0 20px var(--gold); }
         .hand { display: flex; gap: 5px; justify-content: center; min-height: 80px; margin-top: 5px; flex-wrap: nowrap; }
         .card { width: 40px; height: 60px; background: white; color: black; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; border: 2px solid #333; cursor: pointer; transition: transform 0.2s; }
         .card.red-p { color: var(--red); border-color: var(--red); }
         .card.selected { transform: translateY(-18px); border: 3px solid var(--gold); box-shadow: 0 5px 15px var(--gold); }
-        .card.confirmed { opacity: 0.4; filter: grayscale(0.8); transform: translateY(-12px); cursor: default; }
-        .card.back { background: var(--card-back) !important; color: transparent !important; border-color: #fff; }
-        
+        .card.confirmed, .card.loser { opacity: 0.6; filter: grayscale(1); transform: translateY(-12px); cursor: default; }
+        .card.back { background: var(--card-back) !important; color: transparent !important; border-color: #fff; box-shadow: none; }
         .slot { position: absolute; width: 150px; height: 110px; display: flex; justify-content: center; align-items: center; gap: 4px; background: rgba(0,0,0,0.15); border: 2px dashed rgba(255,255,255,0.2); border-radius: 10px; }
         .slot-0 { bottom: 200px; left: 50%; transform: translateX(-50%); }
         .slot-1 { left: 160px; top: 50%; transform: translateY(-50%) rotate(90deg); }
         .slot-2 { top: 200px; left: 50%; transform: translateX(-50%) rotate(180deg); }
         .slot-3 { right: 160px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
-        
         .tricks { display: flex; gap: 2px; height: 25px; justify-content: center; margin-bottom: 5px; }
         .trick-tag { width: 22px; height: 22px; background: #fff; color: #000; font-size: 13px; font-weight: bold; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid #333; }
         .trick-tag.red-p { color: var(--red); border-color: var(--red); }
-        
         #lobby, #settlement-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.92); display: flex; justify-content: center; align-items: center; z-index: 10001; }
         .panel { background: #2c3e50; padding: 30px; border-radius: 20px; border: 3px solid var(--gold); width: 340px; text-align: center; }
         button { padding: 12px 25px; background: #e67e22; color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: bold; font-size: 16px; margin: 5px 0; }
         button:disabled { background: #7f8c8d; cursor: not-allowed; }
-        
         #toast { position:fixed; top:20%; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.9); color:var(--gold); padding:15px 30px; border:2px solid var(--gold); border-radius:10px; display:none; z-index:99999; }
         #timer-box { position:absolute; top:20px; right:20px; font-size:36px; font-weight:bold; color:#e74c3c; display:none; z-index:10002; }
         .rule-btn { position: fixed; top: 20px; left: 20px; z-index: 10005; background: #3498db; }
+        .info-container { transform: rotate(0deg); }
+        .p-1 .info-container { transform: rotate(-90deg); }
+        .p-2 .info-container { transform: rotate(-180deg); }
+        .p-3 .info-container { transform: rotate(90deg); }
     </style>
 </head>
 <body>
-
-<div id="toast"></div>
-<div id="timer-box">30</div>
-<button class="rule-btn" onclick="toggleRules()">💡 遊戲規則</button>
-
+<div id="toast"></div><div id="timer-box">30</div><button class="rule-btn" onclick="toggleRules()">💡 遊戲規則</button>
 <div id="rule-overlay" onclick="toggleRules()">
     <div class="rule-content" onclick="event.stopPropagation()">
         <h3>象棋吃墩 遊戲規則</h3>
@@ -75,49 +60,38 @@
         <center><button onclick="toggleRules()" style="background:var(--gold); color:black; margin-top:10px; width:120px;">我明白了</button></center>
     </div>
 </div>
-
-<div id="lobby">
-    <div class="panel">
-        <h2 style="color:var(--gold);">象棋吃墩 PVP</h2>
-        <div id="lobby-init-name">
-            <input type="text" id="nick-in" placeholder="請輸入暱稱" maxlength="10" style="padding:12px; width:100%; border-radius:10px; border:2px solid var(--gold); background:#34495e; color:white; margin-bottom:10px;">
-            <button id="btn-host" onclick="createRoom()" style="width:100%;">創建房間</button>
-            <button id="btn-join" onclick="joinRoomAction()" style="width:100%; display:none; background:#27ae60;">加入遊戲</button>
-            <button onclick="toggleRules()" style="width:100%; background:#7f8c8d;">查看規則</button>
-        </div>
-        <div id="lobby-status" style="display:none;">
-            <p id="player-count" style="font-size:20px; color:var(--gold); font-weight:bold;">(1/4)</p>
-            <div id="player-list" style="margin:20px 0; text-align:left; background:rgba(0,0,0,0.3); padding:15px; border-radius:10px; min-height:100px;"></div>
-            <input type="text" id="copy-url" readonly onclick="this.select();" style="width:100%; padding:8px; font-size:12px; background:#1a1a1a; color:#aaa; border:1px solid #444; margin-bottom:10px;">
-            <p id="wait-msg">等待其他玩家加入...</p>
-        </div>
+<div id="lobby"><div class="panel">
+    <h2 style="color:var(--gold);">象棋吃墩 PVP</h2>
+    <div id="lobby-init-name">
+        <input type="text" id="nick-in" placeholder="請輸入暱稱" maxlength="10" style="padding:12px; width:100%; border-radius:10px; border:2px solid var(--gold); background:#34495e; color:white; margin-bottom:10px;">
+        <button id="btn-host" onclick="createRoom()">創建房間</button>
+        <button id="btn-join" onclick="joinRoomAction()" style="display:none; background:#27ae60;">加入遊戲</button>
+        <button onclick="toggleRules()" style="background:#7f8c8d;">查看規則</button>
     </div>
-</div>
-
-<div id="settlement-overlay" style="display:none;">
-    <div class="panel">
-        <h2 style="color:var(--gold);">本局結算</h2>
-        <div id="last-winner-info" style="font-weight:bold; margin-bottom:10px;"></div>
-        <div id="result-list"></div>
-        <button id="btn-next-ready" style="margin-top:20px; width:100%;">下一局遊戲</button>
+    <div id="lobby-status" style="display:none;">
+        <p id="player-count" style="font-size:20px; color:var(--gold); font-weight:bold;">(1/4)</p>
+        <div id="player-list" style="margin:20px 0; text-align:left; background:rgba(0,0,0,0.3); padding:15px; border-radius:10px; min-height:100px;"></div>
+        <input type="text" id="copy-url" readonly onclick="this.select();" style="width:100%; padding:8px; font-size:12px; background:#1a1a1a; color:#aaa; border:1px solid #444; margin-bottom:10px;">
+        <p>等待其他玩家加入...</p>
     </div>
-</div>
-
-<div class="table-container">
-    <div class="table" id="main-table">
-        <div id="area-0" class="player p-0"><div id="t-0" class="tricks"></div><div id="h-0" class="hand"></div><div class="info-container"><b id="name-0"></b><div id="status-0" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-0"></div></div></div>
-        <div id="area-1" class="player p-1"><div class="info-container"><b id="name-1"></b><div id="status-1" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-1"></div></div><div id="h-1" class="hand"></div><div id="t-1" class="tricks"></div></div>
-        <div id="area-2" class="player p-2"><div class="info-container"><b id="name-2"></b><div id="status-2" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-2"></div></div><div id="h-2" class="hand"></div><div id="t-2" class="tricks"></div></div>
-        <div id="area-3" class="player p-3"><div class="info-container"><b id="name-3"></b><div id="status-3" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-3"></div></div><div id="h-3" class="hand"></div><div id="t-3" class="tricks"></div></div>
-        <div id="slot-0" class="slot slot-0"></div><div id="slot-1" class="slot slot-1"></div>
-        <div id="slot-2" class="slot slot-2"></div><div id="slot-3" class="slot slot-3"></div>
-    </div>
-</div>
-
+</div></div>
+<div id="settlement-overlay" style="display:none;"><div class="panel">
+    <h2 style="color:var(--gold);">本局結算</h2>
+    <div id="last-winner-info" style="font-weight:bold; margin-bottom:10px;"></div>
+    <div id="result-list"></div>
+    <button id="btn-next-ready" style="margin-top:20px; width:100%;">下一局遊戲</button>
+</div></div>
+<div class="table-container"><div class="table" id="main-table">
+    <div id="area-0" class="player p-0"><div id="t-0" class="tricks"></div><div id="h-0" class="hand"></div><div class="info-container"><b id="name-0"></b><div id="status-0" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-0"></div></div></div>
+    <div id="area-1" class="player p-1"><div class="info-container"><b id="name-1"></b><div id="status-1" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-1"></div></div><div id="h-1" class="hand"></div><div id="t-1" class="tricks"></div></div>
+    <div id="area-2" class="player p-2"><div class="info-container"><b id="name-2"></b><div id="status-2" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-2"></div></div><div id="h-2" class="hand"></div><div id="t-2" class="tricks"></div></div>
+    <div id="area-3" class="player p-3"><div class="info-container"><b id="name-3"></b><div id="status-3" style="color:var(--gold); font-size:12px; height:15px;"></div><div id="bal-3"></div></div><div id="h-3" class="hand"></div><div id="t-3" class="tricks"></div></div>
+    <div id="slot-0" class="slot slot-0"></div><div id="slot-1" class="slot slot-1"></div>
+    <div id="slot-2" class="slot slot-2"></div><div id="slot-3" class="slot slot-3"></div>
+</div></div>
 <div class="controls" style="position:fixed; bottom:30px; left:50%; transform:translateX(-50%);"><button id="main-btn" onclick="flow()" disabled style="padding:15px 50px; font-size:20px;">等待中</button></div>
 
 <script>
-    // 邏輯部分與之前版本相同，確保 PVP 與 Milestone 1.2 規則對齊
     const CHESS_DATA = [
         {n:'帥', v:7, r:true}, {n:'仕', v:6, r:true}, {n:'仕', v:6, r:true}, {n:'相', v:5, r:true}, {n:'相', v:5, r:true},
         {n:'俥', v:4, r:true}, {n:'俥', v:4, r:true}, {n:'瑪', v:3, r:true}, {n:'瑪', v:3, r:true}, {n:'砲', v:2, r:true}, {n:'砲', v:2, r:true},
@@ -131,13 +105,12 @@
     let balances = [5000, 5000, 5000, 5000], hands = [[],[],[],[]], trickHistory = [[],[],[],[]];
     let selectedIDs = [], confirmedIDs = [], state = "IDLE", turn = 0, currentCall = null;
     let tableCards = [[],[],[],[]], hasConfirmed = [false, false, false, false], names = ["","","",""];
-    let diceTurn = 0, isProcessing = false, roundWinners = [];
+    let diceTurn = 0, roundWinners = [];
 
     const rid = (new URLSearchParams(window.location.search)).get('room');
     window.onload = () => { if (rid) { document.getElementById('btn-host').style.display = 'none'; document.getElementById('btn-join').style.display = 'block'; } };
 
     function toggleRules() { const el = document.getElementById('rule-overlay'); el.style.display = (el.style.display === 'flex') ? 'none' : 'flex'; }
-    
     function createRoom() {
         const myName = document.getElementById('nick-in').value || "房主";
         peer = new Peer(); isHost = true; myIndex = 0; names[0] = myName;
@@ -152,11 +125,7 @@
                 conn.on('data', (d) => {
                     if (d.type === 'JOIN') {
                         let nIdx = names.indexOf("");
-                        if (nIdx !== -1) {
-                            names[nIdx] = d.name; connections[nIdx] = conn;
-                            broadcast({type: 'LOBBY_SYNC', names}); 
-                            updateLobbyUI();
-                        }
+                        if (nIdx !== -1) { names[nIdx] = d.name; connections[nIdx] = conn; broadcast({type: 'LOBBY_SYNC', names}); updateLobbyUI(); }
                     } else handleData(d, names.indexOf(d.senderName));
                 });
             });
@@ -190,21 +159,17 @@
                     const payload = {type: 'INIT', index: i, names, state: "WAIT_DICE", diceTurn: 0, hands: gameHands};
                     if (i === 0) handleData(payload, 0); else connections[i].send(payload);
                 }
-            }, 1000);
+            }, 800);
         }
     }
 
     function handleData(data, senderIdx) {
         if (data.type === 'LOBBY_SYNC') { names = data.names; updateLobbyUI(); }
-        if (data.type === 'INIT') {
-            myIndex = data.index; names = data.names; state = data.state; diceTurn = data.diceTurn; hands = data.hands;
-            sortHand(); document.getElementById('lobby').style.display = 'none'; document.getElementById('main-table').style.display = 'block'; render();
-        }
+        if (data.type === 'INIT') { myIndex = data.index; names = data.names; state = data.state; diceTurn = data.diceTurn; hands = data.hands; sortHand(); document.getElementById('lobby').style.display = 'none'; document.getElementById('main-table').style.display = 'block'; render(); }
         if (data.type === 'SYNC') {
-            state = "PLAYING"; turn = data.turn; currentCall = data.currentCall; hasConfirmed = data.hasConfirmed; 
+            turn = data.turn; currentCall = data.currentCall; hasConfirmed = data.hasConfirmed; 
             state = (currentCall === null) ? (turn === myIndex ? "MY_TURN" : "IDLE") : (hasConfirmed[myIndex] ? "WAITING" : "FOLLOWING");
-            document.getElementById('timer-box').style.display = currentCall ? 'block' : 'none';
-            render();
+            document.getElementById('timer-box').style.display = currentCall ? 'block' : 'none'; render();
         }
         if (data.type === 'CONFIRM_OK') {
             hasConfirmed[data.idx] = true; if (data.idx === myIndex) { confirmedIDs = [...selectedIDs]; selectedIDs = []; state = "WAITING"; }
@@ -221,7 +186,6 @@
         if (data.type === 'MSG') showToast(data.msg);
         if (data.type === 'TIMER') document.getElementById('timer-box').innerText = data.time;
         if (data.type === 'DISTRIBUTE') { document.getElementById('settlement-overlay').style.display = 'none'; resetRoundState(); hands = data.hands; sortHand(); state = "WAIT_DICE"; diceTurn = data.diceTurn; render(); }
-        
         if (isHost) {
             if (data.type === 'PLAY_ACTION') serverReceiveAction(senderIdx, data.cards);
             if (data.type === 'ROLL_DICE') serverHandleRoll();
@@ -235,12 +199,19 @@
             btn.disabled = (myIndex !== diceTurn);
             btn.innerText = (myIndex === diceTurn) ? "🎲 點我擲骰決定首家" : `等待 ${names[diceTurn]} 擲骰`;
         } else {
-            btn.disabled = !((state === "MY_TURN" && selectedIDs.length > 0) || (state === "FOLLOWING" && selectedIDs.length === (currentCall?currentCall.count:0)));
-            btn.innerText = (state === "WAITING") ? "等待中" : (state === "MY_TURN") ? "確認叫牌" : (state === "FOLLOWING") ? "確認跟牌" : "等待中";
+            const currentSelectedCards = hands[myIndex].filter(c => selectedIDs.includes(c.id));
+            const pat = getPattern(currentSelectedCards);
+            // 修正：只有合法牌型才能點選確認
+            let canConfirm = false;
+            if (state === "MY_TURN" && pat !== null) canConfirm = true;
+            if (state === "FOLLOWING" && pat !== null && selectedIDs.length === (currentCall?currentCall.count:0)) canConfirm = true;
+
+            btn.disabled = !canConfirm;
+            btn.innerText = (state === "WAITING") ? "等待中" : (state === "MY_TURN") ? (pat ? `確認${pat.name}` : "選擇牌型") : (state === "FOLLOWING") ? "確認跟牌" : "等待中";
         }
         for(let i=0; i<4; i++) {
             let wIdx = (i + myIndex) % 4;
-            let shouldGlow = (state !== "WAIT_DICE" && state !== "ANIMATING") && ((!currentCall && wIdx === turn) || (currentCall && !hasConfirmed[wIdx]));
+            let shouldGlow = (currentCall === null && state !== "WAIT_DICE" && state !== "ANIMATING" && wIdx === turn);
             document.getElementById(`area-${i}`).className = `player p-${i} ${shouldGlow ? 'active-glow' : ''}`;
             document.getElementById(`name-${i}`).innerText = names[wIdx];
             document.getElementById(`bal-${i}`).innerText = `$${balances[wIdx]}`;
@@ -249,31 +220,46 @@
             if (wIdx === myIndex) {
                 hands[wIdx].forEach(c => {
                     const d = document.createElement('div'); d.className = `card ${c.r?'red-p':''} ${selectedIDs.includes(c.id)?'selected':''} ${confirmedIDs.includes(c.id)?'confirmed':''}`;
-                    d.innerText = c.n; d.onclick = () => { if (state === "MY_TURN" || state === "FOLLOWING") { if (selectedIDs.includes(c.id)) selectedIDs = selectedIDs.filter(id => id !== c.id); else if (selectedIDs.length < 8) selectedIDs.push(c.id); render(); } }; h.appendChild(d);
+                    d.innerText = c.n; d.onclick = () => { if (state === "MY_TURN" || state === "FOLLOWING") { if (selectedIDs.includes(c.id)) selectedIDs = selectedIDs.filter(id => id !== c.id); else selectedIDs.push(c.id); render(); } }; h.appendChild(d);
                 });
             } else if (hands[wIdx]) hands[wIdx].forEach(() => h.innerHTML += '<div class="card back"></div>');
             const t = document.getElementById(`t-${i}`); t.innerHTML = '';
             trickHistory[wIdx].forEach(card => { const tag = document.createElement('div'); tag.className = `trick-tag ${card.r ? 'red-p' : ''}`; tag.innerText = card.n; t.appendChild(tag); });
         }
     }
+
+    function getPattern(cards) {
+        if (!cards || cards.length === 0) return null;
+        const len = cards.length;
+        const isAllRed = cards.every(c => c.r);
+        const isAllBlack = cards.every(c => !c.r);
+        if (!isAllRed && !isAllBlack) return null;
+        const names = cards.map(c => c.n);
+        const uniqueNames = [...new Set(names)];
+        const vSum = cards.reduce((s, c) => s + c.v + (c.r ? 0.5 : 0), 0);
+        if (len === 1) return { name: "單張", pwr: vSum };
+        if (uniqueNames.length === 1) return { name: (len === 2 ? "對子" : "同子"), pwr: 1000 * len + vSum };
+        if (len >= 3) {
+            const grpA = isAllRed ? ['帥', '仕', '相'] : ['將', '士', '象'];
+            const grpB = isAllRed ? ['俥', '瑪', '砲'] : ['車', '馬', '包'];
+            const isGrpA = uniqueNames.every(n => grpA.includes(n)) && grpA.every(n => uniqueNames.includes(n));
+            const isGrpB = uniqueNames.every(n => grpB.includes(n)) && grpB.every(n => uniqueNames.includes(n));
+            if (isGrpA || isGrpB) return { name: "順子", pwr: 2000 * len + vSum };
+        }
+        return null;
+    }
+
     function broadcast(data) { if (isHost) { connections.forEach(c => c && c.send(data)); handleData(data, 0); } else hostConn.send({...data, senderName: names[myIndex]}); }
     function flow() { if (state === "WAIT_DICE") { if (myIndex === diceTurn) broadcast({type: 'ROLL_DICE'}); return; } const played = hands[myIndex].filter(c => selectedIDs.includes(c.id)); broadcast({type: 'PLAY_ACTION', cards: played}); }
-    function serverHandleRoll() { const s = Math.floor(Math.random() * 4); broadcast({type: 'MSG', msg: `🎲 ${names[diceTurn]} 擲出了首家：${names[s]}`}); setTimeout(() => { roundWinners = []; turn = s; currentCall = null; hasConfirmed = [false, false, false, false]; broadcast({type: 'SYNC', turn, currentCall, hasConfirmed}); }, 1500); }
+    function serverHandleRoll() { const s = Math.floor(Math.random() * 4); broadcast({type: 'MSG', msg: `🎲 ${names[diceTurn]} 擲出了首家：${names[s]}`}); setTimeout(() => { roundWinners = []; turn = s; currentCall = null; hasConfirmed = [false, false, false, false]; broadcast({type: 'SYNC', turn, currentCall, hasConfirmed}); }, 1200); }
     function serverReceiveAction(idx, cards) { tableCards[idx] = cards; hasConfirmed[idx] = true; broadcast({type: 'CONFIRM_OK', idx, cardCount: cards.length}); if (currentCall === null) { let pat = getPattern(cards); currentCall = {...pat, count: cards.length, callerIdx: idx}; broadcast({type: 'SYNC', turn, currentCall, hasConfirmed}); } if (hasConfirmed.every(v => v === true)) serverProcessBattle(); }
     function serverProcessBattle() { let winIdx = currentCall.callerIdx, maxPwr = currentCall.pwr; for(let i=0; i<4; i++) { let pPat = getPattern(tableCards[i]); if (tableCards[i].length === currentCall.count && pPat && pPat.name === currentCall.name && pPat.pwr > maxPwr) { maxPwr = pPat.pwr; winIdx = i; } } roundWinners.push({ winner: winIdx, tricks: currentCall.count }); broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: [...tableCards[winIdx]]}); setTimeout(() => { if (hands[0].length === 0) serverFinalSettle(winIdx); else { turn = winIdx; currentCall = null; hasConfirmed = [false, false, false, false]; broadcast({type: 'SYNC', turn, currentCall, hasConfirmed}); } }, 4000); }
-    function serverFinalSettle(lastWinnerIdx) { 
-        let finalTricks = [0,0,0,0], diffs = [0,0,0,0], totalFlow = 0; roundWinners.forEach(record => { finalTricks[record.winner] += record.tricks; }); 
-        let multiplier = finalTricks.some(t => t === 8) ? 2 : 1;
-        for(let i=0; i<4; i++) if (i !== lastWinnerIdx) { let d = (finalTricks[i] - 5) * 20 * multiplier; diffs[i] = d; totalFlow += d; } 
-        diffs[lastWinnerIdx] = -totalFlow; for(let i=0; i<4; i++) balances[i] += diffs[i]; 
-        broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalTricks, lastWinner: names[lastWinnerIdx], winIdx: lastWinnerIdx}); 
-    }
+    function serverFinalSettle(lastWinnerIdx) { let finalTricks = [0,0,0,0], diffs = [0,0,0,0], totalFlow = 0; roundWinners.forEach(record => { finalTricks[record.winner] += record.tricks; }); let multiplier = finalTricks.some(t => t === 8) ? 2 : 1; for(let i=0; i<4; i++) if (i !== lastWinnerIdx) { let d = (finalTricks[i] - 5) * 20 * multiplier; diffs[i] = d; totalFlow += d; } diffs[lastWinnerIdx] = -totalFlow; for(let i=0; i<4; i++) balances[i] += diffs[i]; broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalTricks, lastWinner: names[lastWinnerIdx], winIdx: lastWinnerIdx}); }
     function serverPrepareNext(winIdx) { let deck = [...CHESS_DATA].map(c => ({...c, id: Math.random()})).sort(() => Math.random() - 0.5); let tempHands = [[],[],[],[]]; for(let r=0; r<8; r++) for(let i=0; i<4; i++) tempHands[i].push(deck.pop()); broadcast({type: 'DISTRIBUTE', hands: tempHands, diceTurn: winIdx}); }
-    function getPattern(cards) { if (!cards || cards.length === 0) return null; const len = cards.length; const isAllRed = cards.every(c => c.r), isAllBlack = cards.every(c => !c.r); if (!isAllRed && !isAllBlack) return null; const vSum = cards.reduce((s, c) => s + c.v + (c.r ? 0.5 : 0), 0); if (len === 1) return { name: "單張", pwr: vSum }; if ([...new Set(cards.map(c=>c.n))].length === 1 && len >= 2) return { name: (len === 2 ? "對子" : "同子"), pwr: 1000 * len + vSum }; if (len >= 3) { const ns = cards.map(c=>c.n), u = [...new Set(ns)], grpA = isAllRed ? ['帥', '仕', '相'] : ['將', '士', '象'], grpB = isAllRed ? ['俥', '瑪', '砲'] : ['車', '馬', '包']; if ((u.every(n => grpA.includes(n)) && grpA.every(n => u.includes(n))) || (u.every(n => grpB.includes(n)) && grpB.every(n => u.includes(n)))) return { name: "順子", pwr: 2000 * len + vSum }; } return null; }
     function sortHand() { if(hands[myIndex]) hands[myIndex].sort((a,b) => (b.v !== a.v) ? b.v - a.v : (b.r ? -1 : 1)); }
     function resetRoundState() { trickHistory=[[],[],[],[]]; selectedIDs=[]; confirmedIDs=[]; currentCall=null; tableCards=[[],[],[],[]]; hasConfirmed=[false,false,false,false]; }
     function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 2500); }
-    async function runBattleAnimation(winIdx, callerIdx) { let curMax = -1; for(let i=0; i<4; i++) { let p = (callerIdx + i) % 4, sIdx = (p - myIndex + 4) % 4, pCards = tableCards[p], pPat = getPattern(pCards); let reveal = (i === 0) || (pCards.length === currentCall.count && pPat && pPat.pwr > curMax); if (reveal) curMax = pPat ? pPat.pwr : curMax; document.getElementById(`slot-${sIdx}`).innerHTML = pCards.map(c => `<div class="card ${c.r?'red-p':''}" style="width:35px; height:50px; font-size:16px;">${reveal ? c.n : ''}</div>`).join(''); await new Promise(r => setTimeout(r, 600)); } await new Promise(r => setTimeout(r, 1500)); for(let i=0; i<4; i++) document.getElementById(`slot-${i}`).innerHTML = ''; render(); }
+    async function runBattleAnimation(winIdx, callerIdx) { let curMax = -1; for(let i=0; i<4; i++) { let p = (callerIdx + i) % 4, sIdx = (p - myIndex + 4) % 4, pCards = tableCards[p], pPat = getPattern(pCards); let reveal = (p === callerIdx || p === winIdx); if (reveal) curMax = pPat ? pPat.pwr : curMax; document.getElementById(`slot-${sIdx}`).innerHTML = pCards.map(c => { const isWinnerCard = (p === winIdx); const classStr = reveal ? `card ${c.r?'red-p':''} ${!isWinnerCard?'loser':''}` : `card back`; return `<div class="${classStr}" style="width:35px; height:50px; font-size:16px;">${reveal ? c.n : ''}</div>`; }).join(''); await new Promise(r => setTimeout(r, 600)); } await new Promise(r => setTimeout(r, 1500)); for(let i=0; i<4; i++) document.getElementById(`slot-${i}`).innerHTML = ''; render(); }
     function showSettle(diffs, counts, lastWinner, winIdx) { document.getElementById('last-winner-info').innerText = `🏆 贏家：${lastWinner}`; const list = document.getElementById('result-list'); list.innerHTML = ''; for(let i=0; i<4; i++) { let wIdx = (i + myIndex) % 4; list.innerHTML += `<div style="display:flex; justify-content:space-between; margin:5px 0; border-bottom:1px solid #444;"><span>${names[wIdx]} (${counts[wIdx]} 墩)</span><span style="color:${diffs[wIdx]>=0?'#2ecc71':'#e74c3c'}">${diffs[wIdx]>=0?'+':''}${diffs[wIdx]}</span></div>`; } document.getElementById('btn-next-ready').onclick = () => { if (isHost) serverPrepareNext(winIdx); else hostConn.send({type: 'REQ_NEXT', winIdx: winIdx}); }; document.getElementById('settlement-overlay').style.display = 'flex'; }
 </script>
 </body>
