@@ -15,9 +15,9 @@
         .table { width: 700px; height: 700px; background: var(--table); border: 12px solid #5d4037; border-radius: 50%; position: relative; box-shadow: inset 0 0 100px #000; display: none; }
         .player { position: absolute; text-align: center; width: 360px; z-index: 10; padding: 10px; border-radius: 15px; }
         .p-0 { bottom: 10px; left: 50%; transform: translateX(-50%); }
-        .p-1 { left: -140px; top: 50%; transform: translateY(-50%) rotate(90deg); }
+        .p-1 { left: -140px; text-align: center; top: 50%; transform: translateY(-50%) rotate(90deg); }
         .p-2 { top: 10px; left: 50%; transform: translateX(-50%) rotate(180deg); }
-        .p-3 { right: -140px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
+        .p-3 { right: -140px; text-align: center; top: 50%; transform: translateY(-50%) rotate(-90deg); }
         .info-container { transform: rotate(0deg); }
         .p-1 .info-container { transform: rotate(-90deg); }
         .p-2 .info-container { transform: rotate(-180deg); }
@@ -261,7 +261,7 @@
             }
         }
         
-        // 記錄贏家索引與該回合出牌張數
+        // 【修正核心】: 紀錄贏家和對應的出牌張數 (X)
         roundWinners.push({ winner: winIdx, count: currentCall.count });
         
         broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: [...tableCards[winIdx]]});
@@ -286,35 +286,33 @@
     function serverFinalSettle(lastWinnerIdx) {
         let finalCounts = [0,0,0,0], diffs = [0,0,0,0], totalFlow = 0;
         
-        // 累加贏家回合的牌張數
+        // 按照實際張數統計墩數 (整數累加)
         roundWinners.forEach(record => {
             finalCounts[record.winner] += record.count;
         });
         
-        // 修正總數必為 8 (每張牌代表 0.25 墩，所以 32 張牌總和必為 8)
-        // 由於 finalCounts 紀錄的是張數，最後除以 4 或直接以張數邏輯處理 (此處採納您的邏輯：出的張數 = 墩數)
-        // 因 32 張牌 / 4 位玩家 = 總墩數 8，代表 1 墩 = 4 張牌。
-        // 但若您的規則是「贏一回合 X 張牌就得 X 墩」，則總墩數應為 32。
-        // 根據您「總墩數為 8」的需求，此處將統計結果轉換為 8 墩制：
-        let normalizedCounts = finalCounts.map(count => count / 4);
-        
-        const sum = normalizedCounts.reduce((a, b) => a + b, 0);
-        if (sum !== 8) normalizedCounts[lastWinnerIdx] += (8 - sum);
+        // 確保總墩數必為 32 (全場手牌總數)
+        const sum = finalCounts.reduce((a, b) => a + b, 0);
+        if (sum !== 32) finalCounts[lastWinnerIdx] += (32 - sum);
 
-        let slamWinner = normalizedCounts.findIndex(c => c === 8);
+        // 金幣結算邏輯
+        // 基準墩數: 8 張牌 (每人初始手牌數量)
+        // 若贏得 32 墩 (全部吃掉)，即為大滿貫
+        let slamWinner = finalCounts.findIndex(c => c === 32);
         if (slamWinner !== -1) {
             for(let i=0; i<4; i++) if(i !== slamWinner) { diffs[i] = -120; totalFlow += 120; }
             diffs[slamWinner] = totalFlow;
         } else {
             for(let i=0; i<4; i++) if (i !== lastWinnerIdx) { 
-                let d = (normalizedCounts[i] - 2) * 20; // 5墩改為2墩基準(對應8墩制)
+                // 超過或少於 8 張基準牌的計算
+                let d = (finalCounts[i] - 8) * 20; 
                 diffs[i] = d; 
                 totalFlow += d; 
             }
             diffs[lastWinnerIdx] = -totalFlow;
         }
         for(let i=0; i<4; i++) balances[i] += diffs[i];
-        broadcast({type: 'SETTLE_ALL', balances, diffs, counts: normalizedCounts, lastWinner: names[lastWinnerIdx]});
+        broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalCounts, lastWinner: names[lastWinnerIdx]});
     }
 
     function sortHand() { hands[myIndex].sort((a,b) => (b.v !== a.v) ? b.v - a.v : (b.r ? -1 : 1)); }
@@ -382,7 +380,7 @@
         const list = document.getElementById('result-list'); list.innerHTML = '';
         for(let i=0; i<4; i++) {
             let wIdx = (i + myIndex) % 4;
-            list.innerHTML += `<div style="display:flex; justify-content:space-between; margin:5px 0;"><span>${names[wIdx]} (${counts[wIdx]}墩)</span><span style="color:${diffs[wIdx]>=0?'#2ecc71':'#e74c3c'}">${diffs[wIdx]>=0?'+':''}${diffs[wIdx]}</span></div>`;
+            list.innerHTML += `<div style="display:flex; justify-content:space-between; margin:5px 0;"><span>${names[wIdx]} (${counts[wIdx]}張牌)</span><span style="color:${diffs[wIdx]>=0?'#2ecc71':'#e74c3c'}">${diffs[wIdx]>=0?'+':''}${diffs[wIdx]}</span></div>`;
         }
         document.getElementById('settlement-overlay').style.display = 'flex';
     }
