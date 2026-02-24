@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>象棋吃墩 PVP - Milestone 1.2 (斷線重連版)</title>
+    <title>象棋吃墩 PVP - Milestone 1.1 (斷線重連修復版)</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
+        /* 嚴格遵守 Milestone 1.1 UI 設定，無任何變更 */
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
         * { box-sizing: border-box; }
         body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
@@ -36,6 +37,10 @@
         .slot-3 { right: 160px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
         .slot .revealed-card { width: 40px; height: 60px; background: white; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; border: 2px solid #333; color: black; }
         .slot .revealed-card.red-p { color: var(--red); border-color: var(--red); }
+        .slot .hidden-win { background: #555 !important; border-color: #333 !important; color: transparent !important; }
+        .tricks { display: flex; gap: 2px; height: 25px; justify-content: center; margin-bottom: 5px; flex-wrap: wrap; max-width: 250px; margin: 0 auto; }
+        .trick-tag { width: 22px; height: 22px; background: #fff; color: #000; font-size: 13px; font-weight: bold; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid #333; }
+        .trick-tag.red-p { color: var(--red); border-color: var(--red); }
         #timer-box { position:absolute; top:20px; right:20px; font-size:36px; font-weight:bold; color:#e74c3c; background:rgba(0,0,0,0.6); padding:5px 20px; border-radius:10px; display:none; z-index: 10002; }
         #toast { position:fixed; top:20%; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.9); color:var(--gold); padding:15px 30px; border:2px solid var(--gold); border-radius:10px; display:none; z-index:99999; font-size:20px; font-weight:bold; text-align:center; }
         #lobby, #settlement-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 10001; }
@@ -119,15 +124,27 @@
     let balances = [5000, 5000, 5000, 5000], hands = [[],[],[],[]], trickHistory = [[],[],[],[]];
     let selectedIDs = [], confirmedIDs = [], state = "IDLE", turn = 0, currentCall = null;
     let tableCards = [[],[],[],[]], hasConfirmed = [false, false, false, false], timerInterval = null, names = ["","","",""];
-    let playerIds = ["","","",""]; // 新增：房主紀錄每個位置的 PeerID
+    let playerPeerIds = ["", "", "", ""]; // 房主專用：紀錄每個座位的 Peer ID
+    let roundWinners = []; 
     let isProcessing = false;
 
-    // 讀取保存的身分
-    const savedNick = localStorage.getItem('chess_nick');
-    if (savedNick) document.getElementById('nick-in').value = savedNick;
-
+    // 斷線重連初始化檢查
     const rid = (new URLSearchParams(window.location.search)).get('room');
-    if (rid) { document.getElementById('btn-host').style.display = 'none'; document.getElementById('btn-join').style.display = 'block'; }
+    const savedNick = localStorage.getItem('chess_nick');
+    const savedPeerId = localStorage.getItem('chess_peer_id');
+
+    window.onload = () => {
+        if (savedNick) document.getElementById('nick-in').value = savedNick;
+        if (rid) {
+            document.getElementById('btn-host').style.display = 'none';
+            document.getElementById('btn-join').style.display = 'block';
+            // 如果曾經加入過此房間，自動嘗試重連
+            if (savedNick && savedPeerId) {
+                console.log("偵測到舊身分，嘗試自動重連...");
+                joinRoomAction(true);
+            }
+        }
+    };
 
     function toggleRules(show) { document.getElementById('rules-overlay').style.display = show ? 'flex' : 'none'; }
 
@@ -158,10 +175,10 @@
         peer = new Peer();
         isHost = true;
         document.getElementById('btn-host').disabled = true;
-        document.getElementById('btn-host').innerText = "創建中...";
-
+        
         peer.on('open', (id) => {
-            playerIds[0] = id; names[0] = myName; myIndex = 0;
+            localStorage.setItem('chess_peer_id', id);
+            playerPeerIds[0] = id; names[0] = myName; myIndex = 0;
             document.getElementById('copy-url').value = window.location.origin + window.location.pathname + "?room=" + id;
             document.getElementById('lobby-init-name').style.display = 'none';
             document.getElementById('lobby-status').style.display = 'block';
@@ -171,22 +188,21 @@
         peer.on('connection', (conn) => {
             conn.on('open', () => {
                 conn.on('data', (d) => {
-                    // 處理重連邏輯
                     if (d.type === 'JOIN') {
-                        let reconnectIdx = playerIds.indexOf(d.peerId);
-                        if (reconnectIdx !== -1) {
-                            // 發現舊玩家，更新連線
-                            connections[reconnectIdx - 1] = conn;
+                        let existIdx = playerPeerIds.indexOf(d.peerId);
+                        if (existIdx !== -1) {
+                            // 斷線重連處理
+                            connections[existIdx - 1] = conn; 
                             conn.send({
-                                type: 'RECOVER_STATE', 
-                                index: reconnectIdx, 
-                                hands, names, balances, trickHistory, turn, currentCall, hasConfirmed, state: "GAMING"
+                                type: 'RECOVER',
+                                index: existIdx,
+                                names, balances, hands, trickHistory, turn, currentCall, hasConfirmed, roundWinners
                             });
-                            showToast(`${names[reconnectIdx]} 已重連`);
+                            showToast(`${names[existIdx]} 已回到遊戲`);
                         } else if (connections.length < 3) {
                             connections.push(conn);
                             let newIdx = connections.length;
-                            playerIds[newIdx] = d.peerId;
+                            playerPeerIds[newIdx] = d.peerId;
                             names[newIdx] = d.name;
                             updateLobbyNames();
                         }
@@ -198,31 +214,34 @@
         });
     }
 
-    function joinRoomAction() {
-        if (isProcessing) return; isProcessing = true;
+    function joinRoomAction(isAuto = false) {
+        if (isProcessing && !isAuto) return; 
+        isProcessing = true;
         const myName = document.getElementById('nick-in').value || "玩家";
         localStorage.setItem('chess_nick', myName);
 
         document.getElementById('btn-join').disabled = true;
-        document.getElementById('btn-join').innerText = "加入中...";
-
-        peer = new Peer();
+        
+        // 嘗試使用舊 ID 或生成新 ID
+        peer = savedPeerId ? new Peer(savedPeerId) : new Peer();
+        
         peer.on('open', (id) => {
+            localStorage.setItem('chess_peer_id', id);
             hostConn = peer.connect(rid);
             hostConn.on('open', () => {
                 hostConn.send({type: 'JOIN', name: myName, peerId: id});
                 hostConn.on('data', (d) => handleData(d, 0));
             });
         });
-    }
 
-    function updateLobbyNames() {
-        if (!isHost) return;
-        const activeNames = names.filter(n => n !== "");
-        document.getElementById('player-count').innerText = `(${activeNames.length}/4)`;
-        document.getElementById('player-list').innerHTML = activeNames.map(n => `<div>• ${n}</div>`).join('');
-        if (activeNames.length === 4) document.getElementById('btn-roll').style.display = 'block';
-        broadcast({type: 'LOBBY_SYNC', names, count: activeNames.length});
+        peer.on('error', (err) => {
+            isProcessing = false;
+            document.getElementById('btn-join').disabled = false;
+            if (err.type === 'unavailable-id') { 
+                localStorage.removeItem('chess_peer_id');
+                location.reload(); 
+            }
+        });
     }
 
     function handleData(data, senderIdx) {
@@ -233,12 +252,13 @@
             document.getElementById('player-count').innerText = `(${data.count}/4)`;
             document.getElementById('player-list').innerHTML = names.filter(n => n !== "").map(n => `<div>• ${n}</div>`).join('');
         }
-        if (data.type === 'RECOVER_STATE' || data.type === 'INIT') {
-            myIndex = data.index; 
-            if (data.type === 'RECOVER_STATE') {
-                hands = data.hands; names = data.names; balances = data.balances; trickHistory = data.trickHistory;
-                turn = data.turn; currentCall = data.currentCall; hasConfirmed = data.hasConfirmed;
-                showToast("連線已恢復");
+        if (data.type === 'INIT' || data.type === 'RECOVER') {
+            myIndex = data.index;
+            if (data.type === 'RECOVER') {
+                names = data.names; balances = data.balances; hands = data.hands; 
+                trickHistory = data.trickHistory; turn = data.turn; 
+                currentCall = data.currentCall; hasConfirmed = data.hasConfirmed;
+                roundWinners = data.roundWinners;
             }
             document.getElementById('lobby').style.display = 'none';
             document.getElementById('main-table').style.display = 'block';
@@ -283,7 +303,7 @@
 
     function broadcast(data) {
         if (isHost) { connections.forEach(c => c && c.send(data)); handleData(data, 0); }
-        else hostConn.send(data);
+        else if (hostConn) hostConn.send(data);
     }
 
     function serverInitGame(startTurn) {
@@ -298,6 +318,7 @@
         let tempHands = [[],[],[],[]];
         for(let r=0; r<8; r++) for(let i=0; i<4; i++) tempHands[(startTurn+i)%4].push(deck.pop());
         broadcast({type: 'DISTRIBUTE', hands: tempHands});
+        roundWinners = [];
         turn = startTurn; serverSyncLocal();
     }
 
@@ -323,7 +344,7 @@
                 if (pPat.pwr > maxPwr) { maxPwr = pPat.pwr; winIdx = i; }
             }
         }
-        trickHistory[winIdx].push(...tableCards.flat());
+        roundWinners.push({ winner: winIdx, tricks: currentCall.count });
         broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: [...tableCards[winIdx]]});
         setTimeout(() => {
             if (hands[0].length === 0) serverFinalSettle(winIdx);
@@ -340,10 +361,11 @@
     }
 
     function serverFinalSettle(lastWinnerIdx) {
-        let finalTricks = trickHistory.map(h => h.length / 4); // 粗略估計墩數
-        // 為了簡化，Milestone 1.2 這裡仍沿用舊計算法，但 8 墩翻倍邏輯保留
-        let diffs = [0,0,0,0], totalFlow = 0;
-        let isGrandSlam = finalTricks.some(t => t >= 8);
+        let finalTricks = [0,0,0,0], diffs = [0,0,0,0], totalFlow = 0;
+        roundWinners.forEach(record => { finalTricks[record.winner] += record.tricks; });
+        const currentSum = finalTricks.reduce((a, b) => a + b, 0);
+        if (currentSum !== 8) finalTricks[lastWinnerIdx] += (8 - currentSum);
+        let isGrandSlam = finalTricks.some(t => t === 8);
         let multiplier = isGrandSlam ? 2 : 1;
         for(let i=0; i<4; i++) if (i !== lastWinnerIdx) { 
             let d = (finalTricks[i] - 5) * 20 * multiplier; 
@@ -370,7 +392,7 @@
         btn.innerText = (state === "WAITING") ? "等待中" : (state === "MY_TURN") ? "確認叫牌" : (state === "FOLLOWING") ? "確認跟牌" : "等待中";
         for(let i=0; i<4; i++) {
             let wIdx = (i + myIndex) % 4;
-            document.getElementById(`name-${i}`).innerText = names[wIdx] || (wIdx===0?"房主":"等待中");
+            document.getElementById(`name-${i}`).innerText = names[wIdx] || "等待中";
             document.getElementById(`area-${i}`).classList.toggle('active-glow', wIdx === turn);
             document.getElementById(`bal-${i}`).innerText = `$${balances[wIdx]}`;
             document.getElementById(`status-${i}`).innerText = (wIdx === turn && !currentCall) ? "叫牌中" : (currentCall && !hasConfirmed[wIdx]) ? "跟牌中" : (hasConfirmed[wIdx]) ? "✓ 已就緒" : "";
@@ -386,7 +408,10 @@
                 });
             } else hands[wIdx].forEach(() => h.innerHTML += '<div class="card back"></div>');
             const t = document.getElementById(`t-${i}`); t.innerHTML = '';
-            // 這裡顯示得墩歷史
+            trickHistory[wIdx].forEach(card => {
+                const tag = document.createElement('div'); tag.className = `trick-tag ${card.r ? 'red-p' : ''}`;
+                tag.innerText = card.n; t.appendChild(tag);
+            });
         }
     }
 
@@ -406,7 +431,22 @@
         render();
     }
 
-    function resetRoundState() { selectedIDs=[]; confirmedIDs=[]; currentCall=null; tableCards=[[],[],[],[]]; hasConfirmed=[false,false,false,false]; hideToast(); }
+    function updateLobbyNames() {
+        if (!isHost) return;
+        const activeNames = names.filter(n => n !== "");
+        document.getElementById('player-count').innerText = `(${activeNames.length}/4)`;
+        document.getElementById('player-list').innerHTML = activeNames.map(n => `<div>• ${n}</div>`).join('');
+        if (activeNames.length === 4) document.getElementById('btn-roll').style.display = 'block';
+        broadcast({type: 'LOBBY_SYNC', names, count: activeNames.length});
+    }
+
+    function hostRollDice() {
+        const startIdx = Math.floor(Math.random() * 4);
+        broadcast({type: 'MSG', msg: `🎲 首家為：${names[startIdx]}`});
+        setTimeout(() => serverInitGame(startIdx), 1500);
+    }
+
+    function resetRoundState() { trickHistory=[[],[],[],[]]; selectedIDs=[]; confirmedIDs=[]; currentCall=null; tableCards=[[],[],[],[]]; hasConfirmed=[false,false,false,false]; hideToast(); }
     function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(() => { if(!currentCall) t.style.display = 'none'; }, 2500); }
     function showPersistentToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; }
     function hideToast() { document.getElementById('toast').style.display = 'none'; }
@@ -418,11 +458,6 @@
             list.innerHTML += `<div style="display:flex; justify-content:space-between; margin:5px 0;"><span>${names[wIdx]} (${counts[wIdx]} 墩)</span><span style="color:${diffs[wIdx]>=0?'#2ecc71':'#e74c3c'}">${diffs[wIdx]>=0?'+':''}${diffs[wIdx]}</span></div>`;
         }
         document.getElementById('settlement-overlay').style.display = 'flex';
-    }
-    function hostRollDice() {
-        const startIdx = Math.floor(Math.random() * 4);
-        broadcast({type: 'MSG', msg: `🎲 首家為：${names[startIdx]}`});
-        setTimeout(() => serverInitGame(startIdx), 1500);
     }
     function requestNextGame() { if (isHost) serverStartRound(); else hostConn.send({type: 'REQ_NEXT'}); }
 </script>
