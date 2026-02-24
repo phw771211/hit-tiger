@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>象棋吃墩 PVP - Milestone 1.3</title>
+    <title>象棋吃墩 PVP - Milestone 1.3 (Verified)</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        /* 嚴格保留 Milestone 1.2 的所有 UI 設定 */
+        /* 嚴格遵守 Milestone 1.1/1.2 的所有 UI 設定 */
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
         * { box-sizing: border-box; }
         body { background: #1a1a1a; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
@@ -64,9 +64,9 @@
 <div id="rules-overlay" class="rules-overlay" onclick="toggleRules(false)">
     <div class="rules-content" onclick="event.stopPropagation()">
         <h3>象棋吃墩遊戲規則</h3>
-        <p><b>叫牌與牌型：</b>首家由指定玩家擲骰決定。出牌者可出的合法牌型包括：單張、對子、同子以及順子（將士象、俥瑪砲等）。特別注意：順子可包含重複的牌。</p>
-        <p><b>跟牌勝負：</b>後家必須跟出與首家張數及牌型相同的牌。若無法跟出，則視為棄權。紅牌大於黑牌。大牌者獲得該墩並擁有下一輪叫牌權。</p>
-        <p><b>結算與全壘打：</b>每局以 5 墩為基準，每墩 20 分。若某玩家獲得 8 墩，則達成「全壘打」，其餘三家需支付雙倍分數。最終回合贏家即為該局結算者。</p>
+        <p><b>叫牌與牌型：</b>首家由擲骰決定。出牌者可出的合法牌型包括：單張、對子、同子以及順子。特別注意：順子可包含重複的牌。</p>
+        <p><b>跟牌勝負：</b>後家必須跟出與首家張數及牌型相同的牌。紅牌絕對大於黑牌。大牌者獲得該墩並擁有下一輪的叫牌權。</p>
+        <p><b>結算與全壘打：</b>每局以 5 墩為基準，每墩價值 20 分。若某玩家獲得 8 墩，則達成「全壘打」，其餘三家需支付雙倍分數。</p>
         <button style="width:100%; margin-top:15px;" onclick="toggleRules(false)">確定</button>
     </div>
 </div>
@@ -93,7 +93,7 @@
         <h2 style="color:var(--gold);">本局結算</h2>
         <div id="last-winner-info" style="font-weight:bold; margin-bottom:10px;"></div>
         <div id="result-list"></div>
-        <button id="btn-next-ready" onclick="requestNextGame()" style="margin-top:20px; width:100%;">下一局遊戲</button>
+        <button id="btn-next-ready" style="margin-top:20px; width:100%;">下一局遊戲</button>
     </div>
 </div>
 
@@ -127,7 +127,7 @@
     let playerPeerIds = ["", "", "", ""]; 
     let roundWinners = []; 
     let isProcessing = false, timerInterval = null;
-    let diceTurn = 0; // 當前擁有擲骰權的人
+    let diceTurn = 0; 
 
     const rid = (new URLSearchParams(window.location.search)).get('room');
 
@@ -165,7 +165,6 @@
                         if (idx !== -1) {
                             connections[idx - 1] = conn; 
                             conn.send({ type: 'RECOVER', index: idx, names, balances, hands, trickHistory, turn, currentCall, hasConfirmed, roundWinners, diceTurn, state });
-                            setTimeout(() => { if(state!=="WAIT_DICE") conn.send({ type: 'SYNC', turn, currentCall, hasConfirmed }); }, 300);
                         } else if (connections.length < 3) {
                             connections.push(conn);
                             let nIdx = connections.length;
@@ -194,10 +193,6 @@
                 hostConn.on('data', (d) => handleData(d, 0));
             });
         });
-        peer.on('error', (err) => {
-            if (err.type === 'unavailable-id' && isAuto) setTimeout(() => joinRoomAction(true), 2000);
-            else { isProcessing = false; document.getElementById('btn-join').disabled = false; }
-        });
     }
 
     function handleData(data, senderIdx) {
@@ -218,7 +213,6 @@
             }
             document.getElementById('lobby').style.display = 'none';
             document.getElementById('main-table').style.display = 'block';
-            if (state === "WAIT_DICE") showDiceWaiting();
             render();
         }
         if (data.type === 'SYNC') {
@@ -233,7 +227,7 @@
             document.getElementById('settlement-overlay').style.display = 'none'; 
             resetRoundState(); hands = data.hands; sortHand(); 
             state = "WAIT_DICE"; diceTurn = data.diceTurn;
-            showDiceWaiting(); render(); 
+            render(); 
         }
         if (data.type === 'CONFIRM_OK') {
             hasConfirmed[data.idx] = true;
@@ -249,9 +243,8 @@
             runBattleAnimation(data.winIdx, data.callerIdx);
         }
         if (data.type === 'SETTLE_ALL') { 
-            balances = data.balances; 
-            diceTurn = data.winIdx; // 需求2: 贏家成為下一局擲骰者
-            showSettle(data.diffs, data.counts, data.lastWinner); 
+            balances = data.balances; diceTurn = data.winIdx; 
+            showSettle(data.diffs, data.counts, data.lastWinner, data.winIdx); 
         }
         if (data.type === 'TIMER') document.getElementById('timer-box').innerText = data.time;
         if (data.type === 'MSG') showToast(data.msg);
@@ -260,15 +253,9 @@
         if (isHost && data.type === 'REQ_NEXT') serverPrepareNext(data.winIdx);
     }
 
-    // --- 需求改進：擲骰邏輯 ---
-    function showDiceWaiting() {
-        if (myIndex === diceTurn) showToast("🎲 輪到您擲骰子決定首家");
-        else showPersistentToast(`⏳ 等待玩家 ${names[diceTurn]} 擲骰子...`);
-    }
-
     function flow() {
-        if (state === "WAIT_DICE" && myIndex === diceTurn) {
-            broadcast({type: 'ROLL_DICE'});
+        if (state === "WAIT_DICE") {
+            if (myIndex === diceTurn) broadcast({type: 'ROLL_DICE'});
             return;
         }
         const played = hands[myIndex].filter(c => selectedIDs.includes(c.id));
@@ -283,7 +270,6 @@
     }
 
     function serverPrepareNext(winIdx) {
-        // 發送新局的手牌，但先進入 WAIT_DICE 狀態
         let deck = [...CHESS_DATA].map(c => ({...c, id: Math.random()})).sort(() => Math.random() - 0.5);
         let tempHands = [[],[],[],[]];
         for(let r=0; r<8; r++) for(let i=0; i<4; i++) tempHands[i].push(deck.pop());
@@ -349,19 +335,18 @@
     }
 
     function serverSyncLocal() { broadcast({type: 'SYNC', turn, currentCall, hasConfirmed}); }
-
     function sortHand() { hands[myIndex].sort((a,b) => (b.v !== a.v) ? b.v - a.v : (b.r ? -1 : 1)); }
     function getPattern(cards) {
         if (!cards || cards.length === 0) return null;
-        const len = cards.length, ns = cards.map(c => c.n);
+        const len = cards.length;
         const isAllRed = cards.every(c => c.r), isAllBlack = cards.every(c => !c.r);
         if (!isAllRed && !isAllBlack) return null;
         const vSum = cards.reduce((s, c) => s + c.v + (c.r ? 0.5 : 0), 0);
         if (len === 1) return { name: "單張", pwr: vSum };
-        if ([...new Set(ns)].length === 1 && len >= 2) return { name: (len === 2 ? "對子" : "同子"), pwr: 1000 * len + vSum };
+        if ([...new Set(cards.map(c=>c.n))].length === 1 && len >= 2) return { name: (len === 2 ? "對子" : "同子"), pwr: 1000 * len + vSum };
         if (len >= 3) {
+            const ns = cards.map(c=>c.n); const u = [...new Set(ns)];
             const groupA = isAllRed ? ['帥', '仕', '相'] : ['將', '士', '象'], groupB = isAllRed ? ['俥', '瑪', '砲'] : ['車', '馬', '包'];
-            const u = [...new Set(ns)];
             if (u.every(n => groupA.includes(n)) && groupA.every(n => u.includes(n))) return { name: "順子", pwr: 2000 * len + vSum };
             if (u.every(n => groupB.includes(n)) && groupB.every(n => u.includes(n))) return { name: "順子", pwr: 2000 * len + vSum };
         }
@@ -372,7 +357,8 @@
         const btn = document.getElementById('main-btn');
         if (state === "WAIT_DICE") {
             btn.disabled = (myIndex !== diceTurn);
-            btn.innerText = (myIndex === diceTurn) ? "🎲 點擊擲骰決定首家" : `等待 ${names[diceTurn]} 擲骰`;
+            btn.innerText = (myIndex === diceTurn) ? "🎲 點我擲骰決定首家" : `等待 ${names[diceTurn]} 擲骰`;
+            showPersistentToast(myIndex === diceTurn ? "🎲 輪到您擲骰子決定首家" : `⏳ 等待玩家 ${names[diceTurn]} 擲骰子...`);
         } else {
             btn.disabled = !((state === "MY_TURN" && selectedIDs.length > 0) || (state === "FOLLOWING" && selectedIDs.length === (currentCall?currentCall.count:0))) || state === "WAITING" || state === "ANIMATING";
             btn.innerText = (state === "WAITING") ? "等待中" : (state === "MY_TURN") ? "確認叫牌" : (state === "FOLLOWING") ? "確認跟牌" : "等待中";
@@ -381,9 +367,9 @@
         for(let i=0; i<4; i++) {
             let wIdx = (i + myIndex) % 4;
             document.getElementById(`name-${i}`).innerText = names[wIdx] || "等待中";
-            document.getElementById(`area-${i}`).classList.toggle('active-glow', wIdx === turn && state !== "WAIT_DICE");
+            document.getElementById(`area-${i}`).classList.toggle('active-glow', wIdx === turn && state === "PLAYING");
             document.getElementById(`bal-${i}`).innerText = `$${balances[wIdx]}`;
-            document.getElementById(`status-${i}`).innerText = (state === "WAIT_DICE" && wIdx === diceTurn) ? "擲骰中..." : (wIdx === turn && !currentCall && state !== "WAIT_DICE") ? "叫牌中" : (currentCall && !hasConfirmed[wIdx]) ? "跟牌中" : (hasConfirmed[wIdx]) ? "✓ 已就緒" : "";
+            document.getElementById(`status-${i}`).innerText = (state === "WAIT_DICE" && wIdx === diceTurn) ? "擲骰中..." : (wIdx === turn && !currentCall && state === "PLAYING") ? "叫牌中" : (currentCall && !hasConfirmed[wIdx]) ? "跟牌中" : (hasConfirmed[wIdx]) ? "✓ 已就緒" : "";
             const h = document.getElementById(`h-${i}`); h.innerHTML = '';
             if (wIdx === myIndex) {
                 hands[wIdx].forEach(c => {
@@ -420,9 +406,7 @@
         document.getElementById('player-list').innerHTML = active.map(n=>`<div>• ${n}</div>`).join('');
         if (isHost && active.length === 4) {
             document.getElementById('wait-msg').innerText = "玩家已齊全，準備進入牌桌...";
-            setTimeout(() => {
-                broadcast({type: 'INIT', diceTurn: 0});
-            }, 1000);
+            setTimeout(() => { broadcast({type: 'INIT', diceTurn: 0}); }, 1200);
         }
         broadcast({type: 'LOBBY_SYNC', names, count: active.length});
     }
@@ -431,18 +415,21 @@
     function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(() => { if(state!=="WAIT_DICE" && !currentCall) t.style.display = 'none'; }, 2500); }
     function showPersistentToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; }
     function hideToast() { document.getElementById('toast').style.display = 'none'; }
-    function showSettle(diffs, counts, lastWinner) {
+    
+    function showSettle(diffs, counts, lastWinner, winIdx) {
         document.getElementById('last-winner-info').innerText = `🏆 最後贏家為結算者：${lastWinner}`;
         const list = document.getElementById('result-list'); list.innerHTML = '';
         for(let i=0; i<4; i++) {
             let wIdx = (i + myIndex) % 4;
             list.innerHTML += `<div style="display:flex; justify-content:space-between; margin:5px 0;"><span>${names[wIdx]} (${counts[wIdx]} 墩)</span><span style="color:${diffs[wIdx]>=0?'#2ecc71':'#e74c3c'}">${diffs[wIdx]>=0?'+':''}${diffs[wIdx]}</span></div>`;
         }
+        document.getElementById('btn-next-ready').onclick = () => { requestNextGame(winIdx); };
         document.getElementById('settlement-overlay').style.display = 'flex';
     }
-    function requestNextGame() { 
-        if (isHost) serverPrepareNext(diceTurn); 
-        else hostConn.send({type: 'REQ_NEXT', winIdx: diceTurn}); 
+
+    function requestNextGame(winIdx) { 
+        if (isHost) serverPrepareNext(winIdx); 
+        else hostConn.send({type: 'REQ_NEXT', winIdx: winIdx}); 
     }
 </script>
 </body>
