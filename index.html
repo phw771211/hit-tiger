@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>象棋吃墩 PVP - 規則實作版</title>
+    <title>象棋吃墩 PVP - Milestone 1 (防重複註冊版)</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --gold: #f1c40f; --red: #e74c3c; --table: #2e7d32; --card-back: #2c3e50; }
@@ -125,6 +125,7 @@
     let selectedIDs = [], confirmedIDs = [], state = "IDLE", turn = 0, currentCall = null;
     let tableCards = [[],[],[],[]], hasConfirmed = [false, false, false, false], timerInterval = null, names = ["","","",""];
     let roundWinners = []; 
+    let isProcessing = false; // 新增：防止重複點擊註冊的鎖定旗標
 
     const rid = (new URLSearchParams(window.location.search)).get('room');
     if (rid) { document.getElementById('btn-host').style.display = 'none'; document.getElementById('btn-join').style.display = 'block'; }
@@ -133,36 +134,35 @@
         document.getElementById('rules-overlay').style.display = show ? 'flex' : 'none';
     }
 
-    // 更新後的順子與牌型判定
     function getPattern(cards) {
         if (!cards || cards.length === 0) return null;
         const len = cards.length, ns = cards.map(c => c.n);
         const isAllRed = cards.every(c => c.r), isAllBlack = cards.every(c => !c.r);
         if (!isAllRed && !isAllBlack) return null;
         const vSum = cards.reduce((s, c) => s + c.v + (c.r ? 0.5 : 0), 0);
-        
-        // 單張
         if (len === 1) return { name: "單張", pwr: vSum };
-        
-        // 對子/同子 (多張相同的牌)
         if ([...new Set(ns)].length === 1 && len >= 2) return { name: (len === 2 ? "對子" : "同子"), pwr: 1000 * len + vSum };
-        
-        // 順子 (允許重複牌，且長度 3 張以上)
         if (len >= 3) {
             const groupA = isAllRed ? ['帥', '仕', '相'] : ['將', '士', '象'];
             const groupB = isAllRed ? ['俥', '瑪', '砲'] : ['車', '馬', '包'];
             const uniqueNs = [...new Set(ns)];
             const isGroupA = uniqueNs.every(n => groupA.includes(n)) && groupA.every(n => uniqueNs.includes(n));
             const isGroupB = uniqueNs.every(n => groupB.includes(n)) && groupB.every(n => uniqueNs.includes(n));
-            
             if (isGroupA || isGroupB) return { name: "順子", pwr: 2000 * len + vSum };
         }
         return null;
     }
 
     function createRoom() {
+        if (isProcessing) return; // 如果正在處理中，忽略點擊
+        isProcessing = true;
         const myName = document.getElementById('nick-in').value || "房主";
         names[0] = myName; myIndex = 0; isHost = true;
+        
+        // 禁用按鈕 UI 反饋
+        document.getElementById('btn-host').disabled = true;
+        document.getElementById('btn-host').innerText = "創建中...";
+
         peer = new Peer();
         document.getElementById('lobby-init-name').style.display = 'none';
         document.getElementById('lobby-status').style.display = 'block';
@@ -172,14 +172,28 @@
             connections.push(conn);
             conn.on('open', () => { conn.on('data', (d) => handleData(d, connections.indexOf(conn) + 1)); });
         });
+        peer.on('error', (err) => { isProcessing = false; document.getElementById('btn-host').disabled = false; document.getElementById('btn-host').innerText = "創建房間"; });
     }
 
     function joinRoomAction() {
+        if (isProcessing) return; // 如果正在處理中，忽略點擊
+        isProcessing = true;
         const myName = document.getElementById('nick-in').value || "玩家";
+        
+        // 禁用按鈕 UI 反饋
+        document.getElementById('btn-join').disabled = true;
+        document.getElementById('btn-join').innerText = "加入中...";
+
         isHost = false; peer = new Peer();
         peer.on('open', () => {
             hostConn = peer.connect(rid);
             hostConn.on('open', () => { hostConn.send({type: 'JOIN', name: myName}); hostConn.on('data', (d) => handleData(d, 0)); });
+        });
+        peer.on('error', (err) => { 
+            isProcessing = false; 
+            document.getElementById('btn-join').disabled = false; 
+            document.getElementById('btn-join').innerText = "加入遊戲";
+            showToast("連線失敗，請重試");
         });
     }
 
@@ -311,25 +325,19 @@
         }, 1000);
     }
 
-    // 更新後的結算與全壘打邏輯
     function serverFinalSettle(lastWinnerIdx) {
         let finalTricks = [0,0,0,0], diffs = [0,0,0,0], totalFlow = 0;
         roundWinners.forEach(record => { finalTricks[record.winner] += record.tricks; });
         const currentSum = finalTricks.reduce((a, b) => a + b, 0);
         if (currentSum !== 8) finalTricks[lastWinnerIdx] += (8 - currentSum);
-
-        // 檢查是否有人達成 8 墩全壘打
         let isGrandSlam = finalTricks.some(t => t === 8);
         let multiplier = isGrandSlam ? 2 : 1;
-
-        // 以 5 墩為基準結算
         for(let i=0; i<4; i++) if (i !== lastWinnerIdx) { 
             let d = (finalTricks[i] - 5) * 20 * multiplier; 
             diffs[i] = d; 
             totalFlow += d; 
         }
         diffs[lastWinnerIdx] = -totalFlow;
-        
         for(let i=0; i<4; i++) balances[i] += diffs[i];
         broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalTricks, lastWinner: names[lastWinnerIdx]});
     }
