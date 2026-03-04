@@ -138,6 +138,7 @@
     let playerPeerIds = ["", "", "", ""]; 
     let roundWinners = [], currentSettleWinnerIdx = -1; 
     let isProcessing = false, timerInterval = null;
+    let disconnected = [false, false, false, false], reconnectTimer = null;
 
     const rid = (new URLSearchParams(window.location.search)).get('room');
 
@@ -168,9 +169,14 @@
                     if (d.type === 'JOIN') {
                         if (connections.length < 3) {
                             connections.push(conn);
-                            names[connections.length] = d.name;
+                            const idx = connections.length;
+                            names[idx] = d.name;
+                            conn.on('close', () => handleGuestDisconnect(idx));
+                            conn.on('error', () => handleGuestDisconnect(idx));
                             updateLobbyNames();
                         }
+                    } else if (d.type === 'REJOIN') {
+                        handleRejoin(conn, d);
                     } else handleData(d, connections.indexOf(conn) + 1);
                 });
             });
@@ -181,12 +187,16 @@
         if (isProcessing) return; isProcessing = true;
         const myName = document.getElementById('nick-in').value || "玩家";
         localStorage.setItem('chess_nick', myName);
+        sessionStorage.setItem('myName', myName);
+        sessionStorage.setItem('roomId', rid);
         peer = new Peer();
         peer.on('open', (id) => {
             hostConn = peer.connect(rid);
             hostConn.on('open', () => {
                 hostConn.send({type: 'JOIN', name: myName});
                 hostConn.on('data', (d) => handleData(d, 0));
+                hostConn.on('close', () => scheduleReconnect());
+                hostConn.on('error', () => scheduleReconnect());
             });
         });
     }
@@ -200,8 +210,22 @@
         }
         if (data.type === 'INIT') {
             myIndex = data.index;
+            sessionStorage.setItem('myIndex', myIndex);
             document.getElementById('lobby').style.display = 'none';
             document.getElementById('main-table').style.display = 'block';
+            render();
+        }
+        if (data.type === 'FULL_STATE') {
+            myIndex = data.index; hands = data.hands; balances = data.balances;
+            turn = data.turn; currentCall = data.currentCall; hasConfirmed = data.hasConfirmed;
+            tableCards = data.tableCards; trickHistory = data.trickHistory; names = data.names;
+            roundWinners = data.roundWinners;
+            if (currentCall === null) { state = (turn === myIndex) ? "MY_TURN" : "IDLE"; hideToast(); }
+            else { state = hasConfirmed[myIndex] ? "WAITING" : "FOLLOWING"; showPersistentToast(`📢 目前牌型：${currentCall.count}張${currentCall.name}`); }
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('main-table').style.display = 'block';
+            document.getElementById('settlement-overlay').style.display = 'none';
+            showToast('✅ 已重新連線');
             render();
         }
         if (data.type === 'SYNC') {
@@ -257,7 +281,8 @@
             let pat = getPattern(cards);
             currentCall = {...pat, count: cards.length, callerIdx: idx};
             startTimerHost(); serverSyncLocal();
-        } 
+            for (let i = 0; i < 4; i++) if (disconnected[i] && i !== idx) autoPlayForDisconnected(i);
+        }
         if (hasConfirmed.every(v => v === true)) { clearInterval(timerInterval); serverProcessBattle(); }
     }
 
@@ -265,7 +290,7 @@
         let t = 30; clearInterval(timerInterval);
         timerInterval = setInterval(() => {
             t--; broadcast({type: 'TIMER', time: t});
-            if (t <= 0) { clearInterval(timerInterval); for(let i=0; i<4; i++) if(!hasConfirmed[i]) serverReceiveAction(i, [hands[i][0]]); }
+            if (t <= 0) { clearInterval(timerInterval); for(let i=0; i<4; i++) if(!hasConfirmed[i]) { const cnt = Math.min(currentCall ? currentCall.count : 1, hands[i].length); serverReceiveAction(i, hands[i].slice(0, cnt)); } }
         }, 1000);
     }
 
@@ -281,7 +306,7 @@
         broadcast({type: 'FORCE_BATTLE', tableCards, winIdx, callerIdx: currentCall.callerIdx, wonCards: [...tableCards[winIdx]]});
         setTimeout(() => {
             if (hands[0].length === 0) serverFinalSettle(winIdx);
-            else { turn = winIdx; currentCall = null; hasConfirmed = [false, false, false, false]; serverSyncLocal(); }
+            else { turn = winIdx; currentCall = null; hasConfirmed = [false, false, false, false]; serverSyncLocal(); if (disconnected[turn]) setTimeout(() => autoPlayForDisconnected(turn), 300); }
         }, 4000);
     }
 
@@ -404,6 +429,51 @@
     function requestNextGame() {
         if (myIndex !== currentSettleWinnerIdx) return;
         broadcast({type: 'REQ_NEXT_ROLL', winnerIdx: myIndex});
+    }
+
+    function handleGuestDisconnect(idx) {
+        if (disconnected[idx]) return;
+        disconnected[idx] = true;
+        broadcast({ type: 'MSG', msg: `⚠️ ${names[idx]} 連線中斷，自動代打中...` });
+        autoPlayForDisconnected(idx);
+    }
+
+    function autoPlayForDisconnected(idx) {
+        if (!disconnected[idx] || hasConfirmed[idx] || hands[idx].length === 0) return;
+        if (currentCall === null && turn !== idx) return;
+        const cnt = currentCall ? Math.min(currentCall.count, hands[idx].length) : 1;
+        serverReceiveAction(idx, hands[idx].slice(0, cnt));
+    }
+
+    function handleRejoin(conn, d) {
+        const idx = d.prevIndex;
+        if (idx < 1 || idx > 3 || !names[idx]) return;
+        connections[idx - 1] = conn;
+        disconnected[idx] = false;
+        conn.on('close', () => handleGuestDisconnect(idx));
+        conn.on('error', () => handleGuestDisconnect(idx));
+        conn.send({ type: 'FULL_STATE', index: idx, hands, balances, turn, currentCall, hasConfirmed, tableCards, trickHistory, names, roundWinners });
+        broadcast({ type: 'MSG', msg: `✅ ${names[idx]} 已重新連線` });
+    }
+
+    function scheduleReconnect() {
+        if (reconnectTimer) return;
+        showPersistentToast('⚠️ 連線中斷，重新連線中...');
+        const roomId = sessionStorage.getItem('roomId');
+        const savedName = sessionStorage.getItem('myName');
+        const savedIndex = parseInt(sessionStorage.getItem('myIndex'));
+        if (!roomId || isNaN(savedIndex)) { showToast('❌ 無法重新連線：缺少連線資訊'); return; }
+        reconnectTimer = setInterval(() => {
+            const newConn = peer.connect(roomId);
+            newConn.on('open', () => {
+                clearInterval(reconnectTimer); reconnectTimer = null;
+                hostConn = newConn;
+                hostConn.send({ type: 'REJOIN', name: savedName, prevIndex: savedIndex });
+                hostConn.on('data', (d) => handleData(d, 0));
+                hostConn.on('close', () => scheduleReconnect());
+                hostConn.on('error', () => scheduleReconnect());
+            });
+        }, 3000);
     }
 
     function resetRoundState() { trickHistory=[[],[],[],[]]; selectedIDs=[]; confirmedIDs=[]; currentCall=null; tableCards=[[],[],[],[]]; hasConfirmed=[false,false,false,false]; hideToast(); }
