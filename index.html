@@ -41,7 +41,13 @@
         .tricks { display: flex; gap: 2px; height: 25px; justify-content: center; margin-bottom: 5px; flex-wrap: wrap; max-width: 250px; margin: 0 auto; }
         .trick-tag { width: 22px; height: 22px; background: #fff; color: #000; font-size: 13px; font-weight: bold; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid #333; }
         .trick-tag.red-p { color: var(--red); border-color: var(--red); }
-        #timer-box { position:absolute; top:20px; right:20px; font-size:36px; font-weight:bold; color:#e74c3c; background:rgba(0,0,0,0.6); padding:5px 20px; border-radius:10px; display:none; z-index: 10002; }
+        #timer-box { position:fixed; top:15px; right:15px; display:none; z-index:10002; text-align:center; width:80px; }
+        .alarm-body { position:relative; width:68px; height:68px; background:#1a1a1a; border:4px solid #e74c3c; border-radius:50%; margin:10px auto 0; display:flex; align-items:center; justify-content:center; }
+        .alarm-bell-left, .alarm-bell-right { position:absolute; width:14px; height:14px; background:#1a1a1a; border:4px solid #e74c3c; border-radius:50%; top:-9px; }
+        .alarm-bell-left { left:6px; } .alarm-bell-right { right:6px; }
+        .alarm-leg-left, .alarm-leg-right { position:absolute; width:4px; height:10px; background:#e74c3c; bottom:-10px; border-radius:2px; }
+        .alarm-leg-left { left:16px; transform:rotate(-20deg); } .alarm-leg-right { right:16px; transform:rotate(20deg); }
+        .alarm-number { font-size:24px; font-weight:bold; color:#e74c3c; }
         #toast { position:fixed; top:20%; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.9); color:var(--gold); padding:15px 30px; border:2px solid var(--gold); border-radius:10px; display:none; z-index:99999; font-size:20px; font-weight:bold; text-align:center; }
         #lobby, #settlement-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 10001; }
         .panel { background: #2c3e50; padding: 30px; border-radius: 20px; border: 3px solid var(--gold); width: 320px; text-align: center; }
@@ -64,7 +70,15 @@
 </head>
 <body>
 
-<div id="timer-box">30</div>
+<div id="timer-box">
+    <div class="alarm-body">
+        <div class="alarm-bell-left"></div>
+        <div class="alarm-bell-right"></div>
+        <div class="alarm-leg-left"></div>
+        <div class="alarm-leg-right"></div>
+        <span class="alarm-number">30</span>
+    </div>
+</div>
 <div id="toast"></div>
 
 <div id="rules-overlay">
@@ -262,7 +276,7 @@
             runBattleAnimation(data.winIdx, data.callerIdx);
         }
         if (data.type === 'SETTLE_ALL') { balances = data.balances; showSettle(data.diffs, data.counts, data.lastWinner, data.winnerIdx); }
-        if (data.type === 'TIMER') document.getElementById('timer-box').innerText = data.time;
+        if (data.type === 'TIMER') document.getElementById('timer-box').querySelector('.alarm-number').innerText = data.time;
         if (data.type === 'MSG') showToast(data.msg);
         if (isHost && data.type === 'PLAY_ACTION') serverReceiveAction(senderIdx, data.cards);
         if (isHost && data.type === 'REQ_NEXT_ROLL') { const s = Math.floor(Math.random() * 4); broadcast({type: 'MSG', msg: `🎲 ${names[data.winnerIdx]} 擲出了首家：${names[s]}`}); setTimeout(()=>serverStartRound(s), 1500); }
