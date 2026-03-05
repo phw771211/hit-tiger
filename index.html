@@ -84,6 +84,33 @@
         .net-negative { color: #e74c3c; font-weight: bold; }
         .net-zero { color: #bdc3c7; }
         .rules-panel { background: #2c3e50; padding: 25px; border-radius: 20px; border: 3px solid var(--gold); width: 340px; text-align: left; font-size: 14px; max-height: 85vh; overflow-y: auto; }
+        /* ── Chat Panel ── */
+        #chat-wrap { display:none; flex-direction:column; background:#12191f; border:1px solid rgba(255,255,255,0.12); z-index:150; overflow:hidden; }
+        #chat-header { padding:8px 14px; color:var(--gold); font-weight:bold; font-size:13px; letter-spacing:.5px; border-bottom:1px solid rgba(255,255,255,0.08); flex-shrink:0; }
+        #chat-msgs { flex:1; overflow-y:auto; padding:8px 12px; display:flex; flex-direction:column; gap:4px; scroll-behavior:smooth; }
+        #chat-msgs::-webkit-scrollbar { width:3px; }
+        #chat-msgs::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.18); border-radius:2px; }
+        .chat-msg { font-size:13px; line-height:1.45; word-break:break-word; }
+        .chat-name { color:var(--gold); font-weight:bold; margin-right:2px; }
+        .chat-text { color:#d8dde4; }
+        #chat-input-row { display:flex; padding:7px 8px; gap:6px; border-top:1px solid rgba(255,255,255,0.08); flex-shrink:0; }
+        #chat-in { flex:1; min-width:0; padding:7px 12px; border-radius:18px; border:1px solid rgba(255,255,255,0.16); background:rgba(255,255,255,0.06); color:white; font-size:13px; outline:none; transition:border-color .2s; }
+        #chat-in:focus { border-color:var(--gold); }
+        #chat-send-btn { padding:7px 14px; background:var(--gold); color:#1a1a1a; border:none; border-radius:18px; cursor:pointer; font-size:13px; font-weight:bold; margin:0; flex-shrink:0; transition:opacity .15s; }
+        #chat-send-btn:active { opacity:.8; }
+        /* PC: right sidebar */
+        @media (min-width:751px) {
+            #chat-wrap { position:fixed; right:16px; top:50%; transform:translateY(-50%); width:260px; height:460px; border-radius:12px; }
+        }
+        /* Mobile: bottom panel */
+        @media (max-width:750px) {
+            #chat-wrap { position:fixed; bottom:0; left:0; right:0; height:200px; border-radius:12px 12px 0 0; }
+            #btn-rules  { bottom:210px !important; }
+            #btn-stats  { bottom:210px !important; }
+            #btn-fund   { bottom:210px !important; }
+            #room-mgmt-wrap { bottom:210px !important; }
+            .controls   { bottom:218px !important; }
+        }
     </style>
 </head>
 <body>
@@ -203,15 +230,24 @@
     </div>
 </div>
 
-<button onclick="document.getElementById('rules-overlay').style.display='flex'" style="position:fixed; bottom:20px; left:20px; background:#34495e; padding:8px 16px; font-size:14px; border-radius:20px; z-index:200; border:1px solid #666;">遊戲規則</button>
-<button onclick="openStats()" style="position:fixed; bottom:20px; left:110px; background:#34495e; padding:8px 16px; font-size:14px; border-radius:20px; z-index:200; border:1px solid #666;">輸贏統計</button>
-<button onclick="openFundInput()" style="position:fixed; bottom:20px; left:210px; background:#34495e; padding:8px 16px; font-size:14px; border-radius:20px; z-index:200; border:1px solid #666;">帶入籌碼</button>
+<button id="btn-rules" onclick="document.getElementById('rules-overlay').style.display='flex'" style="position:fixed; bottom:20px; left:20px; background:#34495e; padding:8px 16px; font-size:14px; border-radius:20px; z-index:200; border:1px solid #666;">遊戲規則</button>
+<button id="btn-stats" onclick="openStats()" style="position:fixed; bottom:20px; left:110px; background:#34495e; padding:8px 16px; font-size:14px; border-radius:20px; z-index:200; border:1px solid #666;">輸贏統計</button>
+<button id="btn-fund" onclick="openFundInput()" style="position:fixed; bottom:20px; left:210px; background:#34495e; padding:8px 16px; font-size:14px; border-radius:20px; z-index:200; border:1px solid #666;">帶入籌碼</button>
 <div class="rel-wrap" id="room-mgmt-wrap" style="position:fixed; bottom:20px; left:320px; display:none; z-index:200;">
     <button onclick="document.getElementById('room-mgmt-overlay').style.display='flex'" style="background:#34495e; padding:8px 16px; font-size:14px; border-radius:20px; border:1px solid #666;">房間管理</button>
     <span id="room-mgmt-dot" class="red-dot"></span>
 </div>
 <div class="controls">
     <button id="main-btn" onclick="flow()" disabled>等待中</button>
+</div>
+
+<div id="chat-wrap">
+    <div id="chat-header">聊天室</div>
+    <div id="chat-msgs"></div>
+    <div id="chat-input-row">
+        <input id="chat-in" type="text" placeholder="輸入訊息..." maxlength="100" onkeydown="if(event.key==='Enter')sendChat()">
+        <button id="chat-send-btn" onclick="sendChat()">送出</button>
+    </div>
 </div>
 
 <script>
@@ -227,6 +263,7 @@
     let peer = null, connections = [], hostConn = null, isHost = false, myIndex = -1;
     let buyIns = [5000,5000,5000,5000], fundRequests = [], hasPendingRequest = false;
     let balances = [5000, 5000, 5000, 5000], hands = [[],[],[],[]], trickHistory = [[],[],[],[]];
+    let chatMessages = [];
     let selectedIDs = [], confirmedIDs = [], state = "IDLE", turn = 0, currentCall = null;
     let tableCards = [[],[],[],[]], hasConfirmed = [false, false, false, false], names = ["","","",""];
     let playerPeerIds = ["", "", "", ""]; 
@@ -313,6 +350,7 @@
             if (rid) { const rd = JSON.parse(localStorage.getItem(`chess_rejoin_${rid}`) || '{}'); rd.myIndex = myIndex; localStorage.setItem(`chess_rejoin_${rid}`, JSON.stringify(rd)); }
             document.getElementById('lobby').style.display = 'none';
             document.getElementById('main-table').style.display = 'block';
+            showChatPanel();
             render();
         }
         if (data.type === 'FULL_STATE') {
@@ -324,6 +362,7 @@
             else { state = hasConfirmed[myIndex] ? "WAITING" : "FOLLOWING"; showPersistentToast(`📢 目前牌型：${currentCall.count}張${currentCall.name}`); }
             document.getElementById('lobby').style.display = 'none';
             document.getElementById('main-table').style.display = 'block';
+            showChatPanel();
             document.getElementById('settlement-overlay').style.display = 'none';
             showToast('✅ 已重新連線');
             render();
@@ -352,6 +391,12 @@
         if (data.type === 'SETTLE_ALL') { balances = data.balances; showSettle(data.diffs, data.counts, data.lastWinner, data.winnerIdx); }
         if (data.type === 'TIMER') document.getElementById('timer-box').querySelector('.alarm-number').innerText = data.time;
         if (data.type === 'MSG') showToast(data.msg);
+        if (data.type === 'CHAT') {
+            appendChatMsg(data.name, data.text);
+            if (isHost && senderIdx > 0) {
+                connections.forEach((c, i) => { if (c && i !== senderIdx - 1) c.send(data); });
+            }
+        }
         if (data.type === 'FUND_REQUEST' && isHost) {
             fundRequests.push({playerIdx: data.playerIdx, name: data.name, amount: data.amount});
             updateFundDots();
@@ -730,6 +775,41 @@
         const hasPending = fundRequests.length > 0;
         document.getElementById('room-mgmt-dot').style.display = hasPending ? 'block' : 'none';
         document.getElementById('fund-req-dot').style.display = hasPending ? 'block' : 'none';
+    }
+
+    function showChatPanel() {
+        document.getElementById('chat-wrap').style.display = 'flex';
+    }
+
+    function escapeHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function sendChat() {
+        const input = document.getElementById('chat-in');
+        const text = input.value.trim();
+        if (!text) return;
+        input.value = '';
+        const myName = names[myIndex] || ('玩宱' + (myIndex + 1));
+        const escaped = escapeHtml(text);
+        if (isHost) {
+            broadcast({ type: 'CHAT', name: myName, text: escaped });
+        } else {
+            appendChatMsg(myName, escaped);
+            hostConn.send({ type: 'CHAT', name: myName, text: escaped });
+        }
+    }
+
+    function appendChatMsg(name, text) {
+        chatMessages.push({ name, text });
+        if (chatMessages.length > 50) chatMessages.shift();
+        const container = document.getElementById('chat-msgs');
+        if (!container) return;
+        const div = document.createElement('div');
+        div.className = 'chat-msg';
+        div.innerHTML = '<span class="chat-name">' + name + ':</span> <span class="chat-text">' + text + '</span>';
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
     }
 
     function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(() => { if(!currentCall) t.style.display = 'none'; }, 2500); }
