@@ -65,6 +65,16 @@
 
         /* 新增：遊戲規則 Overlay 樣式 */
         #rules-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: none; justify-content: center; align-items: center; z-index: 10005; }
+        #stats-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 10005; }
+        .stats-panel { background: #2c3e50; padding: 30px; border-radius: 16px; border: 2px solid var(--gold); min-width: 360px; }
+        .stats-panel h2 { color: var(--gold); text-align: center; margin-top: 0; }
+        .stats-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .stats-table th { color: var(--gold); padding: 8px 12px; border-bottom: 2px solid var(--gold); text-align: center; font-size: 14px; }
+        .stats-table td { padding: 8px 12px; text-align: center; font-size: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .stats-table tr:last-child td { border-bottom: none; }
+        .net-positive { color: #2ecc71; font-weight: bold; }
+        .net-negative { color: #e74c3c; font-weight: bold; }
+        .net-zero { color: #bdc3c7; }
         .rules-panel { background: #2c3e50; padding: 25px; border-radius: 20px; border: 3px solid var(--gold); width: 340px; text-align: left; font-size: 14px; max-height: 85vh; overflow-y: auto; }
     </style>
 </head>
@@ -94,6 +104,24 @@
         <p>4. <b>跟牌規則</b>：後家必須出與首家<b>相同張數</b>且<b>相同類型</b>的牌。若無牌可跟，必須墊牌。</p>
         <p>5. <b>結算</b>：5 墩為基準，每多一墩贏 20，少一墩輸 20。若有人拿 8 墩，分數翻倍。</p>
         <button onclick="document.getElementById('rules-overlay').style.display='none'" style="width:100%; background:#7f8c8d; margin-top:10px;">關閉</button>
+    </div>
+</div>
+
+<div id="stats-overlay">
+    <div class="stats-panel">
+        <h2>輸贏統計</h2>
+        <table class="stats-table">
+            <thead>
+                <tr>
+                    <th>玩家</th>
+                    <th>總買入</th>
+                    <th>當前餘額</th>
+                    <th>淨輸贏</th>
+                </tr>
+            </thead>
+            <tbody id="stats-body"></tbody>
+        </table>
+        <button onclick="document.getElementById('stats-overlay').style.display='none'" style="width:100%; background:#7f8c8d; margin-top:16px;">關閉</button>
     </div>
 </div>
 
@@ -138,6 +166,7 @@
 </div>
 
 <button onclick="document.getElementById('rules-overlay').style.display='flex'" style="position:fixed; bottom:20px; left:20px; background:#34495e; padding:8px 16px; font-size:14px; border-radius:20px; z-index:200; border:1px solid #666;">遊戲規則</button>
+<button onclick="openStats()" style="position:fixed; bottom:20px; left:110px; background:#34495e; padding:8px 16px; font-size:14px; border-radius:20px; z-index:200; border:1px solid #666;">輸贏統計</button>
 <div class="controls">
     <button id="main-btn" onclick="flow()" disabled>等待中</button>
 </div>
@@ -561,6 +590,19 @@
     }
 
     function resetRoundState() { trickHistory=[[],[],[],[]]; selectedIDs=[]; confirmedIDs=[]; currentCall=null; tableCards=[[],[],[],[]]; hasConfirmed=[false,false,false,false]; hideToast(); }
+    function openStats() {
+        const buyIn = 5000;
+        const tbody = document.getElementById('stats-body');
+        tbody.innerHTML = names.map((name, i) => {
+            const bal = balances[i];
+            const net = bal - buyIn;
+            const netClass = net > 0 ? 'net-positive' : net < 0 ? 'net-negative' : 'net-zero';
+            const netStr = net > 0 ? '+$' + net : net < 0 ? '-$' + Math.abs(net) : '$0';
+            return `<tr><td>${name || '玩家'+(i+1)}</td><td>$${buyIn}</td><td>$${bal}</td><td class="${netClass}">${netStr}</td></tr>`;
+        }).join('');
+        document.getElementById('stats-overlay').style.display = 'flex';
+    }
+
     function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(() => { if(!currentCall) t.style.display = 'none'; }, 2500); }
     function showPersistentToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; }
     function hideToast() { document.getElementById('toast').style.display = 'none'; }
