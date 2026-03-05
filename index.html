@@ -202,6 +202,9 @@
             hostConn = peer.connect(rid);
             hostConn.on('open', () => {
                 hostConn.send({type: 'JOIN', name: myName});
+                document.getElementById('lobby-init-name').style.display = 'none';
+                document.getElementById('lobby-status').style.display = 'block';
+                document.getElementById('copy-url').style.display = 'none';
                 hostConn.on('data', (d) => handleData(d, 0));
                 hostConn.on('close', () => scheduleReconnect());
                 hostConn.on('error', () => scheduleReconnect());
