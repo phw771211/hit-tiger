@@ -352,7 +352,36 @@
         return null;
     }
 
-    function sortHand() { hands[myIndex].sort((a,b) => (b.v !== a.v) ? b.v - a.v : (b.r ? -1 : 1)); }
+    function sortHand() {
+        const h = hands[myIndex];
+        const redA = ['帥','仕','相'], redB = ['俥','瑪','砲'];
+        const blkA = ['將','士','象'], blkB = ['車','馬','包'];
+        function extractCombo(pool, group) {
+            const names = pool.map(c => c.n);
+            if (!group.every(n => names.includes(n))) return null;
+            return pool.filter(c => group.includes(c.n));
+        }
+        const usedIds = new Set();
+        const comboItems = [];
+        [[h.filter(c => c.r), redA, 7], [h.filter(c => c.r), redB, 4],
+         [h.filter(c => !c.r), blkA, 7], [h.filter(c => !c.r), blkB, 4]
+        ].forEach(([pool, group, anchor]) => {
+            const available = pool.filter(c => !usedIds.has(c.id));
+            const combo = extractCombo(available, group);
+            if (combo) {
+                combo.forEach(c => usedIds.add(c.id));
+                const isRed = combo[0].r;
+                combo.sort((a, b) => b.v - a.v || (a.r ? -1 : 1));
+                comboItems.push({ cards: combo, key: anchor + (isRed ? 0.5 : 0) });
+            }
+        });
+        const singleItems = h.filter(c => !usedIds.has(c.id))
+            .sort((a, b) => b.v - a.v || (a.r ? -1 : 1))
+            .map(c => ({ cards: [c], key: c.v + (c.r ? 0.5 : 0) }));
+        hands[myIndex] = [...comboItems, ...singleItems]
+            .sort((a, b) => b.key - a.key)
+            .flatMap(item => item.cards);
+    }
 
     function flow() {
         const played = hands[myIndex].filter(c => selectedIDs.includes(c.id));
