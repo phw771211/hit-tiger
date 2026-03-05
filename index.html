@@ -225,6 +225,7 @@
     ];
 
     let peer = null, connections = [], hostConn = null, isHost = false, myIndex = -1;
+    let buyIns = [5000,5000,5000,5000], fundRequests = [], hasPendingRequest = false;
     let balances = [5000, 5000, 5000, 5000], hands = [[],[],[],[]], trickHistory = [[],[],[],[]];
     let selectedIDs = [], confirmedIDs = [], state = "IDLE", turn = 0, currentCall = null;
     let tableCards = [[],[],[],[]], hasConfirmed = [false, false, false, false], names = ["","","",""];
@@ -352,19 +353,20 @@
         if (data.type === 'TIMER') document.getElementById('timer-box').querySelector('.alarm-number').innerText = data.time;
         if (data.type === 'MSG') showToast(data.msg);
         if (data.type === 'FUND_REQUEST' && isHost) {
-            fundRequests.push({playerIdx:data.playerIdx,name:data.name,amount:data.amount});
+            fundRequests.push({playerIdx: data.playerIdx, name: data.name, amount: data.amount});
             updateFundDots();
-            showToast(data.name+' 申請帶入 $'+data.amount);
+            showToast('帶入申請: ' + data.name + ' +$' + data.amount);
         }
         if (data.type === 'FUND_APPROVED') {
-            balances[data.playerIdx]+=data.amount; buyIns[data.playerIdx]+=data.amount;
-            if(data.playerIdx===myIndex) hasPendingRequest=false;
-            showToast(data.name+' 帶入了 $'+data.amount);
+            balances[data.playerIdx] += data.amount;
+            buyIns[data.playerIdx] += data.amount;
+            if (data.playerIdx === myIndex) hasPendingRequest = false;
+            showToast('帶入批准: ' + data.name + ' +$' + data.amount);
             render();
         }
         if (data.type === 'FUND_REJECTED') {
-            hasPendingRequest=false;
-            showToast('帶入請求 $'+data.amount+' 已被房主拒絕');
+            hasPendingRequest = false;
+            showToast('帶入請求 $' + data.amount + ' 已被拒絕');
         }
         if (isHost && data.type === 'PLAY_ACTION') serverReceiveAction(senderIdx, data.cards);
         if (isHost && data.type === 'REQ_NEXT_ROLL') { const s = Math.floor(Math.random() * 4); broadcast({type: 'MSG', msg: `🎲 ${names[data.winnerIdx]} 擲出了首家：${names[s]}`}); setTimeout(()=>serverStartRound(s), 1500); }
@@ -661,66 +663,73 @@
         }).join('');
         document.getElementById('stats-overlay').style.display = 'flex';
     }
-
+
     function openFundInput() {
-        if (hasPendingRequest) return showToast("\u5f85\u8655\u7406: \u60a8\u6709\u4e00\u7b46\u5f85\u8655\u7406\u7684\u5e36\u5165\u8acb\u6c42");
-        document.getElementById("fund-amount-input").value = "";
-        document.getElementById("fund-input-overlay").style.display = "flex";
+        if (hasPendingRequest) return showToast('⏳ 您有一筆待處理的帶入請求');
+        document.getElementById('fund-amount-input').value = '';
+        document.getElementById('fund-input-overlay').style.display = 'flex';
     }
 
     function submitFundRequest() {
-        const amount = parseInt(document.getElementById("fund-amount-input").value);
-        if (!amount || amount <= 0) return showToast("\u8acb\u8f38\u5165\u6709\u6548\u91d1\u984d");
-        document.getElementById("fund-input-overlay").style.display = "none";
+        const amount = parseInt(document.getElementById('fund-amount-input').value);
+        if (!amount || amount <= 0) return showToast('❌ 請輸入有效金額');
+        document.getElementById('fund-input-overlay').style.display = 'none';
         if (isHost) {
-            processFundApproval(myIndex, names[myIndex] || "\u73a9\u5bb11", amount);
+            processFundApproval(myIndex, names[myIndex] || '玩宱1', amount);
         } else {
             hasPendingRequest = true;
-            hostConn.send({type: "FUND_REQUEST", playerIdx: myIndex, name: names[myIndex], amount});
-            showToast("\u5e36\u5165\u8acb\u6c42\u5df2\u9001\u51fa\uff0c\u7b49\u5f85\u623f\u4e3b\u5be9\u6838");
+            hostConn.send({type: 'FUND_REQUEST', playerIdx: myIndex, name: names[myIndex], amount});
+            showToast('帶入請求已送出，等待房主審核');
         }
     }
 
     function openFundReqList() {
-        const list = document.getElementById("fund-req-list");
-        const empty = document.getElementById("fund-req-empty");
+        const list = document.getElementById('fund-req-list');
+        const empty = document.getElementById('fund-req-empty');
         if (fundRequests.length === 0) {
-            list.innerHTML = ""; empty.style.display = "block";
+            list.innerHTML = ''; empty.style.display = 'block';
         } else {
-            empty.style.display = "none";
+            empty.style.display = 'none';
             list.innerHTML = fundRequests.map((r, i) =>
-                `<div class="req-row"><span>${r.name}</span><span style="color:var(--gold)">+$${r.amount}</span>
-                <div style="display:flex;gap:6px;">
-                <button onclick="approveFund(${i})" style="background:#27ae60;padding:6px 12px;font-size:13px;">\u6279\u51c6</button>
-                <button onclick="rejectFund(${i})" style="background:#e74c3c;padding:6px 12px;font-size:13px;">\u62d2\u7d55</button>
-                </div></div>`
-            ).join("");
+                `<div class="req-row">
+                    <span>${r.name}</span>
+                    <span style="color:var(--gold)">+$${r.amount}</span>
+                    <div style="display:flex;gap:6px;">
+                        <button onclick="approveFund(${i})" style="background:#27ae60;padding:6px 12px;font-size:13px;">批准</button>
+                        <button onclick="rejectFund(${i})" style="background:#e74c3c;padding:6px 12px;font-size:13px;">拒絕</button>
+                    </div>
+                </div>`
+            ).join('');
         }
-        document.getElementById("fund-req-overlay").style.display = "flex";
+        document.getElementById('fund-req-overlay').style.display = 'flex';
     }
 
     function approveFund(i) {
-        const r = fundRequests[i]; fundRequests.splice(i, 1);
+        const r = fundRequests[i];
+        fundRequests.splice(i, 1);
         processFundApproval(r.playerIdx, r.name, r.amount);
-        updateFundDots(); openFundReqList();
+        updateFundDots();
+        openFundReqList();
     }
 
     function rejectFund(i) {
-        const r = fundRequests[i]; fundRequests.splice(i, 1);
-        if (r.playerIdx > 0 && connections[r.playerIdx - 1])
-            connections[r.playerIdx - 1].send({type: "FUND_REJECTED", amount: r.amount});
-        updateFundDots(); openFundReqList();
+        const r = fundRequests[i];
+        fundRequests.splice(i, 1);
+        if (r.playerIdx > 0 && connections[r.playerIdx - 1]) {
+            connections[r.playerIdx - 1].send({type: 'FUND_REJECTED', amount: r.amount});
+        }
+        updateFundDots();
+        openFundReqList();
     }
 
     function processFundApproval(playerIdx, name, amount) {
-        balances[playerIdx] += amount; buyIns[playerIdx] += amount;
-        broadcast({type: "FUND_APPROVED", playerIdx, name, amount});
+        broadcast({type: 'FUND_APPROVED', playerIdx, name, amount});
     }
 
     function updateFundDots() {
-        const p = fundRequests.length > 0;
-        document.getElementById("room-mgmt-dot").style.display = p ? "block" : "none";
-        document.getElementById("fund-req-dot").style.display = p ? "block" : "none";
+        const hasPending = fundRequests.length > 0;
+        document.getElementById('room-mgmt-dot').style.display = hasPending ? 'block' : 'none';
+        document.getElementById('fund-req-dot').style.display = hasPending ? 'block' : 'none';
     }
 
     function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(() => { if(!currentCall) t.style.display = 'none'; }, 2500); }
