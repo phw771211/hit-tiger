@@ -65,6 +65,14 @@
 
         /* 新增：遊戲規則 Overlay 樣式 */
         #rules-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: none; justify-content: center; align-items: center; z-index: 10005; }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+        .red-dot { position:absolute; top:-4px; right:-4px; width:10px; height:10px; background:#e74c3c; border-radius:50%; animation:blink 1s infinite; display:none; }
+        .rel-wrap { position:relative; display:inline-block; }
+        #fund-input-overlay, #room-mgmt-overlay, #fund-req-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.85); display:none; justify-content:center; align-items:center; z-index:10005; }
+        .mgmt-panel { background:#2c3e50; padding:24px; border-radius:16px; border:2px solid var(--gold); min-width:300px; }
+        .mgmt-panel h2 { color:var(--gold); text-align:center; margin-top:0; }
+        .req-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.1); gap:8px; }
+        .req-row:last-child { border-bottom:none; }
         #stats-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 10005; }
         .stats-panel { background: #2c3e50; padding: 30px; border-radius: 16px; border: 2px solid var(--gold); min-width: 360px; }
         .stats-panel h2 { color: var(--gold); text-align: center; margin-top: 0; }
@@ -125,6 +133,36 @@
     </div>
 </div>
 
+<div id="fund-input-overlay">
+    <div class="mgmt-panel" style="min-width:280px">
+        <h2>帶入籌碼</h2>
+        <p style="color:#bdc3c7;text-align:center;margin:0 0 12px">想要帶入多少？</p>
+        <input id="fund-amount-input" type="number" min="1" placeholder="輸入金額"
+            style="width:100%;padding:12px;font-size:16px;border-radius:8px;border:2px solid var(--gold);background:#34495e;color:white;margin-bottom:12px;box-sizing:border-box;">
+        <button onclick="submitFundRequest()" style="width:100%;background:#27ae60;margin-bottom:8px;">確認帶入</button>
+        <button onclick="document.getElementById('fund-input-overlay').style.display='none'" style="width:100%;background:#7f8c8d;">取消</button>
+    </div>
+</div>
+
+<div id="room-mgmt-overlay">
+    <div class="mgmt-panel">
+        <h2>房間管理</h2>
+        <div class="rel-wrap" style="width:100%;margin-bottom:8px;">
+            <button onclick="openFundReqList()" style="width:100%;position:relative;">帶入請求<span id="fund-req-dot" class="red-dot"></span></button>
+        </div>
+        <button onclick="document.getElementById('room-mgmt-overlay').style.display='none'" style="width:100%;background:#7f8c8d;margin-top:8px;">關閉</button>
+    </div>
+</div>
+
+<div id="fund-req-overlay">
+    <div class="mgmt-panel" style="min-width:360px;max-width:480px;">
+        <h2>帶入請求</h2>
+        <div id="fund-req-list"></div>
+        <p id="fund-req-empty" style="text-align:center;color:#bdc3c7;display:none;">目前沒有待處理的請求</p>
+        <button onclick="document.getElementById('fund-req-overlay').style.display='none'" style="width:100%;background:#7f8c8d;margin-top:12px;">關閉</button>
+    </div>
+</div>
+
 <div id="lobby">
     <div class="panel">
         <h2 style="color:var(--gold);">象棋吃墩 PVP</h2>
@@ -167,6 +205,11 @@
 
 <button onclick="document.getElementById('rules-overlay').style.display='flex'" style="position:fixed; bottom:20px; left:20px; background:#34495e; padding:8px 16px; font-size:14px; border-radius:20px; z-index:200; border:1px solid #666;">遊戲規則</button>
 <button onclick="openStats()" style="position:fixed; bottom:20px; left:110px; background:#34495e; padding:8px 16px; font-size:14px; border-radius:20px; z-index:200; border:1px solid #666;">輸贏統計</button>
+<button onclick="openFundInput()" style="position:fixed; bottom:20px; left:210px; background:#34495e; padding:8px 16px; font-size:14px; border-radius:20px; z-index:200; border:1px solid #666;">帶入籌碼</button>
+<div class="rel-wrap" id="room-mgmt-wrap" style="position:fixed; bottom:20px; left:320px; display:none; z-index:200;">
+    <button onclick="document.getElementById('room-mgmt-overlay').style.display='flex'" style="background:#34495e; padding:8px 16px; font-size:14px; border-radius:20px; border:1px solid #666;">房間管理</button>
+    <span id="room-mgmt-dot" class="red-dot"></span>
+</div>
 <div class="controls">
     <button id="main-btn" onclick="flow()" disabled>等待中</button>
 </div>
@@ -213,6 +256,7 @@
             document.getElementById('copy-url').value = location.origin + location.pathname + "?room=" + id;
             document.getElementById('lobby-init-name').style.display = 'none';
             document.getElementById('lobby-status').style.display = 'block';
+            document.getElementById('room-mgmt-wrap').style.display = 'block';
             updateLobbyNames();
         });
         peer.on('connection', (conn) => {
@@ -307,6 +351,21 @@
         if (data.type === 'SETTLE_ALL') { balances = data.balances; showSettle(data.diffs, data.counts, data.lastWinner, data.winnerIdx); }
         if (data.type === 'TIMER') document.getElementById('timer-box').querySelector('.alarm-number').innerText = data.time;
         if (data.type === 'MSG') showToast(data.msg);
+        if (data.type === 'FUND_REQUEST' && isHost) {
+            fundRequests.push({playerIdx:data.playerIdx,name:data.name,amount:data.amount});
+            updateFundDots();
+            showToast(data.name+' 申請帶入 $'+data.amount);
+        }
+        if (data.type === 'FUND_APPROVED') {
+            balances[data.playerIdx]+=data.amount; buyIns[data.playerIdx]+=data.amount;
+            if(data.playerIdx===myIndex) hasPendingRequest=false;
+            showToast(data.name+' 帶入了 $'+data.amount);
+            render();
+        }
+        if (data.type === 'FUND_REJECTED') {
+            hasPendingRequest=false;
+            showToast('帶入請求 $'+data.amount+' 已被房主拒絕');
+        }
         if (isHost && data.type === 'PLAY_ACTION') serverReceiveAction(senderIdx, data.cards);
         if (isHost && data.type === 'REQ_NEXT_ROLL') { const s = Math.floor(Math.random() * 4); broadcast({type: 'MSG', msg: `🎲 ${names[data.winnerIdx]} 擲出了首家：${names[s]}`}); setTimeout(()=>serverStartRound(s), 1500); }
     }
@@ -591,16 +650,77 @@
 
     function resetRoundState() { trickHistory=[[],[],[],[]]; selectedIDs=[]; confirmedIDs=[]; currentCall=null; tableCards=[[],[],[],[]]; hasConfirmed=[false,false,false,false]; hideToast(); }
     function openStats() {
-        const buyIn = 5000;
         const tbody = document.getElementById('stats-body');
         tbody.innerHTML = names.map((name, i) => {
             const bal = balances[i];
+            const buyIn = buyIns[i];
             const net = bal - buyIn;
             const netClass = net > 0 ? 'net-positive' : net < 0 ? 'net-negative' : 'net-zero';
             const netStr = net > 0 ? '+$' + net : net < 0 ? '-$' + Math.abs(net) : '$0';
             return `<tr><td>${name || '玩家'+(i+1)}</td><td>$${buyIn}</td><td>$${bal}</td><td class="${netClass}">${netStr}</td></tr>`;
         }).join('');
         document.getElementById('stats-overlay').style.display = 'flex';
+    }
+
+    function openFundInput() {
+        if (hasPendingRequest) return showToast("\u5f85\u8655\u7406: \u60a8\u6709\u4e00\u7b46\u5f85\u8655\u7406\u7684\u5e36\u5165\u8acb\u6c42");
+        document.getElementById("fund-amount-input").value = "";
+        document.getElementById("fund-input-overlay").style.display = "flex";
+    }
+
+    function submitFundRequest() {
+        const amount = parseInt(document.getElementById("fund-amount-input").value);
+        if (!amount || amount <= 0) return showToast("\u8acb\u8f38\u5165\u6709\u6548\u91d1\u984d");
+        document.getElementById("fund-input-overlay").style.display = "none";
+        if (isHost) {
+            processFundApproval(myIndex, names[myIndex] || "\u73a9\u5bb11", amount);
+        } else {
+            hasPendingRequest = true;
+            hostConn.send({type: "FUND_REQUEST", playerIdx: myIndex, name: names[myIndex], amount});
+            showToast("\u5e36\u5165\u8acb\u6c42\u5df2\u9001\u51fa\uff0c\u7b49\u5f85\u623f\u4e3b\u5be9\u6838");
+        }
+    }
+
+    function openFundReqList() {
+        const list = document.getElementById("fund-req-list");
+        const empty = document.getElementById("fund-req-empty");
+        if (fundRequests.length === 0) {
+            list.innerHTML = ""; empty.style.display = "block";
+        } else {
+            empty.style.display = "none";
+            list.innerHTML = fundRequests.map((r, i) =>
+                `<div class="req-row"><span>${r.name}</span><span style="color:var(--gold)">+$${r.amount}</span>
+                <div style="display:flex;gap:6px;">
+                <button onclick="approveFund(${i})" style="background:#27ae60;padding:6px 12px;font-size:13px;">\u6279\u51c6</button>
+                <button onclick="rejectFund(${i})" style="background:#e74c3c;padding:6px 12px;font-size:13px;">\u62d2\u7d55</button>
+                </div></div>`
+            ).join("");
+        }
+        document.getElementById("fund-req-overlay").style.display = "flex";
+    }
+
+    function approveFund(i) {
+        const r = fundRequests[i]; fundRequests.splice(i, 1);
+        processFundApproval(r.playerIdx, r.name, r.amount);
+        updateFundDots(); openFundReqList();
+    }
+
+    function rejectFund(i) {
+        const r = fundRequests[i]; fundRequests.splice(i, 1);
+        if (r.playerIdx > 0 && connections[r.playerIdx - 1])
+            connections[r.playerIdx - 1].send({type: "FUND_REJECTED", amount: r.amount});
+        updateFundDots(); openFundReqList();
+    }
+
+    function processFundApproval(playerIdx, name, amount) {
+        balances[playerIdx] += amount; buyIns[playerIdx] += amount;
+        broadcast({type: "FUND_APPROVED", playerIdx, name, amount});
+    }
+
+    function updateFundDots() {
+        const p = fundRequests.length > 0;
+        document.getElementById("room-mgmt-dot").style.display = p ? "block" : "none";
+        document.getElementById("fund-req-dot").style.display = p ? "block" : "none";
     }
 
     function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(() => { if(!currentCall) t.style.display = 'none'; }, 2500); }
