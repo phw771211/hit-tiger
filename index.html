@@ -96,6 +96,7 @@
             <div id="player-list" style="margin:15px 0; text-align:left;"></div>
             <input type="text" id="copy-url" readonly onclick="this.select();" style="width:100%; padding:5px; font-size:10px; background:#34495e; color:white; border:none;">
             <button id="btn-roll" onclick="hostRollDice()" style="margin-top:20px; display:none; width:100%;">🎲 擲骰決定首家</button>
+            <p id="waiting-msg" style="display:none; color:var(--gold); margin-top:20px;">⏳ 等待房主擲骰開始遊戲</p>
         </div>
     </div>
 </div>
@@ -214,6 +215,7 @@
             document.getElementById('lobby-status').style.display = 'block';
             document.getElementById('player-count').innerText = `(${data.count}/4)`;
             document.getElementById('player-list').innerHTML = names.filter(n=>n!=="").map(n=>`<div>• ${n}</div>`).join('');
+            document.getElementById('waiting-msg').style.display = (!isHost && data.count === 4) ? 'block' : 'none';
         }
         if (data.type === 'INIT') {
             myIndex = data.index;
@@ -400,6 +402,7 @@
         document.getElementById('player-count').innerText = `(${active.length}/4)`;
         document.getElementById('player-list').innerHTML = active.map(n=>`<div>• ${n}</div>`).join('');
         if (isHost && active.length === 4) document.getElementById('btn-roll').style.display = 'block';
+        document.getElementById('waiting-msg').style.display = (!isHost && active.length === 4) ? 'block' : 'none';
         broadcast({type: 'LOBBY_SYNC', names, count: active.length});
     }
 
