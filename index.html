@@ -264,6 +264,7 @@
     let buyIns = [5000,5000,5000,5000], fundRequests = [], hasPendingRequest = false;
     let balances = [5000, 5000, 5000, 5000], hands = [[],[],[],[]], trickHistory = [[],[],[],[]];
     let chatMessages = [];
+    let confirmedCounts = [0,0,0,0];
     let selectedIDs = [], confirmedIDs = [], state = "IDLE", turn = 0, currentCall = null;
     let tableCards = [[],[],[],[]], hasConfirmed = [false, false, false, false], names = ["","","",""];
     let playerPeerIds = ["", "", "", ""]; 
@@ -377,6 +378,7 @@
         if (data.type === 'DISTRIBUTE') { document.getElementById('settlement-overlay').style.display = 'none'; resetRoundState(); hands = data.hands; sortHand(); render(); }
         if (data.type === 'CONFIRM_OK') {
             hasConfirmed[data.idx] = true;
+            confirmedCounts[data.idx] = data.cardCount;
             if (data.idx === myIndex) { confirmedIDs = [...selectedIDs]; selectedIDs = []; state = "WAITING"; }
             const uiIdx = (data.idx - myIndex + 4) % 4;
             document.getElementById(`slot-${uiIdx}`).innerHTML = Array(data.cardCount).fill('<div class="card back" style="width:30px; height:45px;"></div>').join('');
@@ -558,7 +560,7 @@
                         render();
                     }}; h.appendChild(d);
                 });
-            } else hands[wIdx].forEach(() => h.innerHTML += '<div class="card back"></div>');
+            } else { const shown = hands[wIdx].length - (hasConfirmed[wIdx] ? confirmedCounts[wIdx] : 0); for (let j = 0; j < Math.max(0, shown); j++) h.innerHTML += '<div class="card back"></div>'; });
             const t = document.getElementById(`t-${i}`); t.innerHTML = '';
             trickHistory[wIdx].forEach(card => { const tag = document.createElement('div'); tag.className = `trick-tag ${card.r ? 'red-p' : ''}`; tag.innerText = card.n; t.appendChild(tag); });
         }
@@ -695,7 +697,7 @@
         showToast('⚠️ 無法重新加入，請重新輸入暱稱加入');
     }
 
-    function resetRoundState() { trickHistory=[[],[],[],[]]; selectedIDs=[]; confirmedIDs=[]; currentCall=null; tableCards=[[],[],[],[]]; hasConfirmed=[false,false,false,false]; hideToast(); }
+    function resetRoundState() { trickHistory=[[],[],[],[]]; selectedIDs=[]; confirmedIDs=[]; currentCall=null; tableCards=[[],[],[],[]]; hasConfirmed=[false,false,false,false]; confirmedCounts=[0,0,0,0]; hideToast(); }
     function openStats() {
         const tbody = document.getElementById('stats-body');
         tbody.innerHTML = names.map((name, i) => {
