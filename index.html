@@ -250,6 +250,8 @@
     </div>
 </div>
 
+<button id="btn-music" onclick="toggleMusic()" style="position:fixed; top:15px; left:15px; background:rgba(30,30,30,0.75); color:var(--gold); border:1px solid rgba(200,169,110,0.4); border-radius:50%; width:36px; height:36px; font-size:18px; cursor:pointer; z-index:300; padding:0; line-height:36px; text-align:center; display:none;">♪</button>
+
 <script>
     const CHESS_DATA = [
         {n:'帥', v:7, r:true}, {n:'仕', v:6, r:true}, {n:'仕', v:6, r:true}, {n:'相', v:5, r:true}, {n:'相', v:5, r:true},
@@ -814,9 +816,107 @@
         container.scrollTop = container.scrollHeight;
     }
 
+    // ── Audio ──────────────────────────────────────────────────────────────────
+    let audioCtx = null, bgGain = null, bgScheduler = null;
+    let bgChordIdx = 0, musicMuted = false, audioReady = false;
+    const LOFI_CHORDS = [
+        [261.63, 329.63, 392.00, 493.88],  // Cmaj7
+        [220.00, 261.63, 329.63, 392.00],  // Am7
+        [174.61, 220.00, 261.63, 329.63],  // Fmaj7
+        [196.00, 246.94, 293.66, 349.23],  // G7
+    ];
+
+    function initAudio() {
+        if (audioReady) return;
+        audioReady = true;
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        bgGain = audioCtx.createGain();
+        bgGain.gain.value = musicMuted ? 0 : 0.12;
+        bgGain.connect(audioCtx.destination);
+        startBgMusic();
+        document.getElementById('btn-music').style.display = 'block';
+    }
+
+    function scheduleChord() {
+        if (!audioCtx || !bgGain) return;
+        const now = audioCtx.currentTime;
+        const dur = 2.0;
+        const freqs = LOFI_CHORDS[bgChordIdx % LOFI_CHORDS.length];
+        bgChordIdx++;
+
+        // Bass note (root / 2)
+        const bass = audioCtx.createOscillator();
+        const bassGain = audioCtx.createGain();
+        bass.type = 'sine';
+        bass.frequency.value = freqs[0] / 2;
+        bassGain.gain.setValueAtTime(0.001, now);
+        bassGain.gain.linearRampToValueAtTime(0.7, now + 0.08);
+        bassGain.gain.linearRampToValueAtTime(0.5, now + dur * 0.6);
+        bassGain.gain.linearRampToValueAtTime(0.001, now + dur);
+        bass.connect(bassGain);
+        bassGain.connect(bgGain);
+        bass.start(now); bass.stop(now + dur);
+
+        // Chord tones (triangle + low-pass)
+        freqs.forEach(function(f) {
+            const osc = audioCtx.createOscillator();
+            const g   = audioCtx.createGain();
+            const lp  = audioCtx.createBiquadFilter();
+            osc.type = 'triangle';
+            osc.frequency.value = f;
+            lp.type = 'lowpass'; lp.frequency.value = 1100;
+            g.gain.setValueAtTime(0.001, now);
+            g.gain.linearRampToValueAtTime(0.55, now + 0.12);
+            g.gain.linearRampToValueAtTime(0.35, now + dur * 0.55);
+            g.gain.linearRampToValueAtTime(0.001, now + dur);
+            osc.connect(lp); lp.connect(g); g.connect(bgGain);
+            osc.start(now); osc.stop(now + dur);
+        });
+
+        bgScheduler = setTimeout(scheduleChord, (dur - 0.05) * 1000);
+    }
+
+    function startBgMusic() {
+        if (bgScheduler) clearTimeout(bgScheduler);
+        scheduleChord();
+    }
+
+    function toggleMusic() {
+        if (!audioCtx) return;
+        musicMuted = !musicMuted;
+        bgGain.gain.setTargetAtTime(musicMuted ? 0 : 0.12, audioCtx.currentTime, 0.1);
+        const btn = document.getElementById('btn-music');
+        btn.innerHTML = musicMuted ? '<span style="text-decoration:line-through">\u266a</span>' : '\u266a';
+    }
+
+    function playClick() {
+        if (!audioCtx) return;
+        const now = audioCtx.currentTime;
+        const osc  = audioCtx.createOscillator();
+        const g    = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(700, now);
+        osc.frequency.exponentialRampToValueAtTime(350, now + 0.08);
+        g.gain.setValueAtTime(0.25, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(now); osc.stop(now + 0.12);
+    }
+
     function showToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(() => { if(!currentCall) t.style.display = 'none'; }, 2500); }
     function showPersistentToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; }
     function hideToast() { document.getElementById('toast').style.display = 'none'; }
+    // ── Audio event listeners ──────────────────────────────────────────────────
+    document.addEventListener('click', function _initOnce(e) {
+        initAudio();
+        document.removeEventListener('click', _initOnce, true);
+    }, { once: true, capture: true });
+
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('button') || e.target.classList.contains('card')) {
+            playClick();
+        }
+    });
 </script>
 </body>
 </html>
