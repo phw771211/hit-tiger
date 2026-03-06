@@ -560,7 +560,7 @@
                         render();
                     }}; h.appendChild(d);
                 });
-            } else { const shown = hands[wIdx].length - (hasConfirmed[wIdx] ? confirmedCounts[wIdx] : 0); for (let j = 0; j < Math.max(0, shown); j++) h.innerHTML += '<div class="card back"></div>'; });
+            } else { const shown = hands[wIdx].length - (hasConfirmed[wIdx] ? confirmedCounts[wIdx] : 0); for (let j = 0; j < Math.max(0, shown); j++) h.innerHTML += '<div class="card back"></div>'; }
             const t = document.getElementById(`t-${i}`); t.innerHTML = '';
             trickHistory[wIdx].forEach(card => { const tag = document.createElement('div'); tag.className = `trick-tag ${card.r ? 'red-p' : ''}`; tag.innerText = card.n; t.appendChild(tag); });
         }
