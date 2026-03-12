@@ -387,7 +387,7 @@
             render();
             if (state === "FOLLOWING" && currentCall && hands[myIndex].length === currentCall.count) {
                 showToast('本局最後一輪，系統直接出牌');
-                setTimeout(() => { selectedIDs = hands[myIndex].map(c => c.id); render(); }, 2000);
+                setTimeout(() => { hideToast(); selectedIDs = hands[myIndex].map(c => c.id); render(); }, 2000);
                 setTimeout(() => flow(), 4000);
             }
         }
