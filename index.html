@@ -342,7 +342,7 @@
                                 disconnected[vacantIdx] = false;
                                 conn.on('close', () => handleGuestDisconnect(vacantIdx));
                                 conn.on('error', () => handleGuestDisconnect(vacantIdx));
-                                conn.send({ type: 'FULL_STATE', index: vacantIdx, hands, balances, turn, currentCall, hasConfirmed, tableCards, trickHistory, names, roundWinners });
+                                conn.send({ type: 'FULL_STATE', index: vacantIdx, hands, balances, turn, currentCall, hasConfirmed, tableCards, trickHistory, names, roundWinners, vacant });
                                 broadcast({ type: 'SEAT_FILLED', idx: vacantIdx, name: d.name });
                             } else {
                                 conn.send({ type: 'MSG', msg: '目前沒有空位，無法加入' });
@@ -403,6 +403,7 @@
             turn = data.turn; currentCall = data.currentCall; hasConfirmed = data.hasConfirmed;
             tableCards = data.tableCards; trickHistory = data.trickHistory; names = data.names;
             roundWinners = data.roundWinners;
+            vacant = data.vacant || [false, false, false, false];
             if (currentCall === null) { state = (turn === myIndex) ? "MY_TURN" : "IDLE"; hideToast(); }
             else { state = hasConfirmed[myIndex] ? "WAITING" : "FOLLOWING"; showPersistentToast(`📢 目前牌型：${currentCall.count}張${currentCall.name}`); }
             document.getElementById('lobby').style.display = 'none';
@@ -692,9 +693,10 @@
         if (idx < 1 || idx > 3 || !names[idx]) return;
         connections[idx - 1] = conn;
         disconnected[idx] = false;
+        vacant[idx] = false;
         conn.on('close', () => handleGuestDisconnect(idx));
         conn.on('error', () => handleGuestDisconnect(idx));
-        conn.send({ type: 'FULL_STATE', index: idx, hands, balances, turn, currentCall, hasConfirmed, tableCards, trickHistory, names, roundWinners });
+        conn.send({ type: 'FULL_STATE', index: idx, hands, balances, turn, currentCall, hasConfirmed, tableCards, trickHistory, names, roundWinners, vacant });
         broadcast({ type: 'MSG', msg: `✅ ${names[idx]} 已重新連線` });
     }
 
