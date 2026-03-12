@@ -571,7 +571,7 @@
 
     function showSettle(diffs, counts, lastWinner, winnerIdx) {
         currentSettleWinnerIdx = winnerIdx;
-        document.getElementById('last-winner-info').innerText = `🏆 贏家：${lastWinner}`;
+        document.getElementById('last-winner-info').innerText = myIndex === winnerIdx ? '🏆 恭喜你是本局贏家!' : `🏆 贏家：${lastWinner}`;
         const list = document.getElementById('result-list'); list.innerHTML = '';
         for(let i=0; i<4; i++) {
             let wIdx = (i + myIndex) % 4;
