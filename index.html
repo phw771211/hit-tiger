@@ -426,7 +426,7 @@
                 setTimeout(() => flow(), 4000);
             }
         }
-        if (data.type === 'DISTRIBUTE') { document.getElementById('settlement-overlay').style.display = 'none'; resetRoundState(); hands = data.hands; sortHand(); render(); }
+        if (data.type === 'DISTRIBUTE') { document.getElementById('settlement-overlay').style.display = 'none'; lastSettleData = null; resetRoundState(); hands = data.hands; sortHand(); render(); }
         if (data.type === 'CONFIRM_OK') {
             hasConfirmed[data.idx] = true;
             confirmedCounts[data.idx] = data.cardCount;
