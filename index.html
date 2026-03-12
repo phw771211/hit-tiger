@@ -380,11 +380,16 @@
             render();
         }
         if (data.type === 'SYNC') {
-            turn = data.turn; currentCall = data.currentCall; hasConfirmed = data.hasConfirmed; 
+            turn = data.turn; currentCall = data.currentCall; hasConfirmed = data.hasConfirmed;
             if (currentCall === null) { state = (turn === myIndex) ? "MY_TURN" : "IDLE"; hideToast(); }
             else { state = hasConfirmed[myIndex] ? "WAITING" : "FOLLOWING"; showPersistentToast(`📢 目前牌型：${currentCall.count}張${currentCall.name}`); }
             document.getElementById('timer-box').style.display = currentCall ? 'block' : 'none';
             render();
+            if (state === "FOLLOWING" && currentCall && hands[myIndex].length === currentCall.count) {
+                selectedIDs = hands[myIndex].map(c => c.id);
+                render();
+                setTimeout(() => flow(), 500);
+            }
         }
         if (data.type === 'DISTRIBUTE') { document.getElementById('settlement-overlay').style.display = 'none'; resetRoundState(); hands = data.hands; sortHand(); render(); }
         if (data.type === 'CONFIRM_OK') {
