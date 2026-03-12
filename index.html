@@ -454,6 +454,17 @@
             showToast(`${leavingName} 已離開遊戲，系統代打`);
             render();
         }
+        if (data.type === 'SEAT_FILLED') {
+            vacant[data.idx] = false;
+            disconnected[data.idx] = false;
+            names[data.idx] = data.name;
+            buyIns[data.idx] = balances[data.idx]; // new player's book starts here
+            showToast(`${data.name} 已加入遊戲`);
+            render();
+            if (lastSettleData && document.getElementById('settlement-overlay').style.display === 'flex') {
+                showSettle(lastSettleData.diffs, lastSettleData.counts, lastSettleData.lastWinner, lastSettleData.winnerIdx);
+            }
+        }
     }
 
     function broadcast(data) {
