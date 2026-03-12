@@ -519,8 +519,9 @@
                 hands[wIdx].forEach(c => {
                     const d = document.createElement('div'); d.className = `card ${c.r?'red-p':''} ${selectedIDs.includes(c.id)?'selected':''} ${confirmedIDs.includes(c.id)?'confirmed':''}`;
                     d.innerText = c.n; d.onclick = () => { if (state !== "ANIMATING" && !hasConfirmed[myIndex]) {
-                        if (selectedIDs.includes(c.id)) selectedIDs = selectedIDs.filter(id => id !== c.id);
-                        else if (selectedIDs.length < 8) selectedIDs.push(c.id);
+                        if (selectedIDs.includes(c.id)) { selectedIDs = selectedIDs.filter(id => id !== c.id); }
+                        else if (state === "FOLLOWING" && currentCall && selectedIDs.length >= currentCall.count) { selectedIDs.shift(); selectedIDs.push(c.id); }
+                        else if (selectedIDs.length < 8) { selectedIDs.push(c.id); }
                         render();
                     }}; h.appendChild(d);
                 });
