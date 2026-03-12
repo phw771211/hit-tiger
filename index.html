@@ -446,6 +446,14 @@
         }
         if (isHost && data.type === 'PLAY_ACTION') serverReceiveAction(senderIdx, data.cards);
         if (isHost && data.type === 'REQ_NEXT_ROLL') { const s = Math.floor(Math.random() * 4); broadcast({type: 'MSG', msg: `🎲 ${names[data.winnerIdx]} 擲出了首家：${names[s]}`}); setTimeout(()=>serverStartRound(s), 1500); }
+        if (isHost && data.type === 'LEAVE') { handlePlayerLeave(senderIdx); }
+        if (data.type === 'PLAYER_LEFT') {
+            const leavingName = names[data.idx];
+            vacant[data.idx] = true;
+            disconnected[data.idx] = true;
+            showToast(`${leavingName} 已離開遊戲，系統代打`);
+            render();
+        }
     }
 
     function broadcast(data) {
@@ -605,6 +613,25 @@
     function requestNextGame() {
         if (myIndex !== currentSettleWinnerIdx) return;
         broadcast({type: 'REQ_NEXT_ROLL', winnerIdx: myIndex});
+    }
+
+    function leaveGame() {
+        if (!confirm('確定要離開遊戲？本局結算仍會計入您的帳戶。')) return;
+        document.getElementById('btn-leave').style.display = 'none';
+        if (isHost) {
+            handlePlayerLeave(myIndex);
+        } else {
+            hostConn.send({ type: 'LEAVE' });
+            showPersistentToast('你已申請離場，系統將代替出牌直到本局結束');
+        }
+    }
+
+    function handlePlayerLeave(idx) {
+        if (vacant[idx]) return;
+        vacant[idx] = true;
+        disconnected[idx] = true;
+        broadcast({ type: 'PLAYER_LEFT', idx });
+        if (isGameStarted) autoPlayForDisconnected(idx);
     }
 
     function handleGuestDisconnect(idx) {
