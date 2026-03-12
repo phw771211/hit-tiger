@@ -252,6 +252,7 @@
 
 <button id="btn-music" onclick="toggleMusic()" style="position:fixed; top:15px; left:15px; background:rgba(30,30,30,0.75); color:var(--gold); border:1px solid rgba(200,169,110,0.4); border-radius:50%; width:36px; height:36px; font-size:18px; cursor:pointer; z-index:300; padding:0; line-height:36px; text-align:center; display:none;">♪</button>
 
+<script src="game-logic.js"></script>
 <script>
     const CHESS_DATA = [
         {n:'帥', v:7, r:true}, {n:'仕', v:6, r:true}, {n:'仕', v:6, r:true}, {n:'相', v:5, r:true}, {n:'相', v:5, r:true},
@@ -476,64 +477,17 @@
     }
 
     function serverFinalSettle(lastWinnerIdx) {
-        let finalTricks = [0,0,0,0], diffs = [0,0,0,0], totalFlow = 0;
+        let finalTricks = [0,0,0,0];
         roundWinners.forEach(record => { finalTricks[record.winner] += record.tricks; });
         const currentSum = finalTricks.reduce((a, b) => a + b, 0);
         if (currentSum !== 8) finalTricks[lastWinnerIdx] += (8 - currentSum);
-        let multiplier = finalTricks.some(t => t === 8) ? 2 : 1;
-        for(let i=0; i<4; i++) if (i !== lastWinnerIdx) { let d = (finalTricks[i] - 5) * 20 * multiplier; diffs[i] = d; totalFlow += d; }
-        diffs[lastWinnerIdx] = -totalFlow;
+        const diffs = calcSettlement(finalTricks, lastWinnerIdx);
         for(let i=0; i<4; i++) balances[i] += diffs[i];
         broadcast({type: 'SETTLE_ALL', balances, diffs, counts: finalTricks, lastWinner: names[lastWinnerIdx], winnerIdx: lastWinnerIdx});
     }
 
-    // --- 物理複製 Milestone 1.2 牌型邏輯 ---
-    function getPattern(cards) {
-        if (!cards || cards.length === 0) return null;
-        const len = cards.length, ns = cards.map(c => c.n);
-        const isAllRed = cards.every(c => c.r), isAllBlack = cards.every(c => !c.r);
-        if (!isAllRed && !isAllBlack) return null;
-        const vSum = cards.reduce((s, c) => s + c.v + (c.r ? 0.5 : 0), 0);
-        if (len === 1) return { name: "單張", pwr: vSum };
-        if ([...new Set(ns)].length === 1 && len >= 2) return { name: (len === 2 ? "對子" : "同子"), pwr: 1000 * len + vSum };
-        if (len >= 3) {
-            const groupA = isAllRed ? ['帥', '仕', '相'] : ['將', '士', '象'], groupB = isAllRed ? ['俥', '瑪', '砲'] : ['車', '馬', '包'];
-            const u = [...new Set(ns)];
-            if (u.every(n => groupA.includes(n)) && groupA.every(n => u.includes(n))) return { name: "順子", pwr: 2000 * len + vSum };
-            if (u.every(n => groupB.includes(n)) && groupB.every(n => u.includes(n))) return { name: "順子", pwr: 2000 * len + vSum };
-        }
-        return null;
-    }
-
     function sortHand() {
-        const h = hands[myIndex];
-        const redA = ['帥','仕','相'], redB = ['俥','瑪','砲'];
-        const blkA = ['將','士','象'], blkB = ['車','馬','包'];
-        function extractCombo(pool, group) {
-            const names = pool.map(c => c.n);
-            if (!group.every(n => names.includes(n))) return null;
-            return pool.filter(c => group.includes(c.n));
-        }
-        const usedIds = new Set();
-        const comboItems = [];
-        [[h.filter(c => c.r), redA, 7], [h.filter(c => c.r), redB, 4],
-         [h.filter(c => !c.r), blkA, 7], [h.filter(c => !c.r), blkB, 4]
-        ].forEach(([pool, group, anchor]) => {
-            const available = pool.filter(c => !usedIds.has(c.id));
-            const combo = extractCombo(available, group);
-            if (combo) {
-                combo.forEach(c => usedIds.add(c.id));
-                const isRed = combo[0].r;
-                combo.sort((a, b) => b.v - a.v || (a.r ? -1 : 1));
-                comboItems.push({ cards: combo, key: anchor + (isRed ? 0.5 : 0) });
-            }
-        });
-        const singleItems = h.filter(c => !usedIds.has(c.id))
-            .sort((a, b) => b.v - a.v || (a.r ? -1 : 1))
-            .map(c => ({ cards: [c], key: c.v + (c.r ? 0.5 : 0) }));
-        hands[myIndex] = [...comboItems, ...singleItems]
-            .sort((a, b) => b.key - a.key)
-            .flatMap(item => item.cards);
+        hands[myIndex] = sortCards(hands[myIndex]);
     }
 
     function flow() {
