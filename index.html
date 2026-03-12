@@ -386,9 +386,9 @@
             document.getElementById('timer-box').style.display = currentCall ? 'block' : 'none';
             render();
             if (state === "FOLLOWING" && currentCall && hands[myIndex].length === currentCall.count) {
-                selectedIDs = hands[myIndex].map(c => c.id);
-                render();
-                setTimeout(() => flow(), 500);
+                showToast('本局最後一輪，系統直接出牌');
+                setTimeout(() => { selectedIDs = hands[myIndex].map(c => c.id); render(); }, 2000);
+                setTimeout(() => flow(), 4000);
             }
         }
         if (data.type === 'DISTRIBUTE') { document.getElementById('settlement-overlay').style.display = 'none'; resetRoundState(); hands = data.hands; sortHand(); render(); }
