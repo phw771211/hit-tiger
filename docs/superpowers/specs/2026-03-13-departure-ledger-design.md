@@ -35,11 +35,13 @@ Vacant seats whose occupants have **not yet been replaced** remain live in the 4
 
 Three cases when the host receives a `REJOIN` message:
 
+First, guard against invalid REJOIN: if `prevIndex < 1`, `prevIndex > 3`, `!names[prevIndex]`, or `!disconnected[prevIndex]` (seat was never vacated — player is still connected), reject silently and return.
+
 | Condition | Action |
 |---|---|
 | `vacant[prevIndex] === true` | Normal rejoin to original seat. No ledger change. |
-| Seat taken, another vacant seat exists | Record displaced player to ledger. Restore returning player from ledger entry. Broadcast `SEAT_FILLED` for new seat. |
-| Seat taken, no other vacant seat | Send MSG `'目前沒有空位，無法加入'`. No state change. |
+| `vacant[prevIndex] === false` (seat taken by new player), another vacant seat exists | Record displaced player to ledger. Restore returning player from ledger entry. Broadcast `SEAT_FILLED` for new seat. |
+| `vacant[prevIndex] === false`, no other vacant seat | Send MSG `'目前沒有空位，無法加入'`. No state change. |
 
 **Normal rejoin flow (`vacant[prevIndex] === true`):**
 After restoring the player to their original seat, broadcast `{ type: 'SEAT_FILLED', idx: prevIndex, name: d.name, buyIn: buyIns[prevIndex], ledger: departureLedger }` so all other clients flip `vacant[prevIndex]` back to `false` and update their displayed state. (Currently `handleRejoin` only sends a `MSG` broadcast, leaving other clients with a stale `vacant` flag.)
