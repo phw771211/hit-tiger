@@ -41,6 +41,9 @@ Three cases when the host receives a `REJOIN` message:
 | Seat taken, another vacant seat exists | Record displaced player to ledger. Restore returning player from ledger entry. Broadcast `SEAT_FILLED` for new seat. |
 | Seat taken, no other vacant seat | Send MSG `'目前沒有空位，無法加入'`. No state change. |
 
+**Normal rejoin flow (`vacant[prevIndex] === true`):**
+After restoring the player to their original seat, broadcast `{ type: 'SEAT_FILLED', idx: prevIndex, name: d.name, buyIn: buyIns[prevIndex], ledger: departureLedger }` so all other clients flip `vacant[prevIndex]` back to `false` and update their displayed state. (Currently `handleRejoin` only sends a `MSG` broadcast, leaving other clients with a stale `vacant` flag.)
+
 **Restore flow (seat taken, vacant seat found):**
 1. Find the returning player's ledger entry: `departureLedger.find(e => e.seatIdx === prevIndex)`
 2. Record the currently-vacant seat's player to ledger: `{name: names[vacantSeat], net: balances[vacantSeat] - buyIns[vacantSeat], balance: balances[vacantSeat], buyIn: buyIns[vacantSeat], seatIdx: vacantSeat}`
@@ -49,7 +52,7 @@ Three cases when the host receives a `REJOIN` message:
 5. Set `vacant[vacantSeat] = false`, `disconnected[vacantSeat] = false`.
 6. Wire `close`/`error` handlers to `handleGuestDisconnect(vacantSeat)`.
 7. Send `FULL_STATE` (with ledger) to returning player.
-8. Broadcast `SEAT_FILLED` (with updated ledger) for the new seat.
+8. Broadcast `SEAT_FILLED` (with updated ledger and `buyIn: entry.buyIn`) for the new seat.
 
 ### Stats View (`openStats`)
 
@@ -67,10 +70,17 @@ For groups 1 and 2 the net is `balances[i] - buyIns[i]`. For group 3 the net is 
 
 `departureLedger` is included in:
 
-- `SEAT_FILLED` broadcast — fires whenever a vacant seat is filled (normal fill or rejoin-conflict reassignment). Clients update `departureLedger = data.ledger`.
+- `SEAT_FILLED` broadcast — fires in three cases: normal new-player fill, rejoin-conflict reassignment, and normal rejoin to original seat (new). Payload includes `{ idx, name, buyIn, ledger }`. Client handler: `buyIns[data.idx] = data.buyIn; departureLedger = data.ledger;` — using the broadcast `buyIn` instead of always resetting to `balances[idx]`, so restored players keep their correct buyIn baseline.
 - `FULL_STATE` send/receive — so newly-joining and rejoining players receive full history.
 
 No new message types are needed.
+
+### Stats Table Display
+
+The existing stats table has columns: 玩家, 總買入, 當前餘額, 淨輸贏.
+
+- **Groups 1 & 2 (seat rows):** all four columns populated normally.
+- **Group 3 (ledger rows):** 總買入 and 當前餘額 show `—`; 淨輸贏 shows `entry.net`. A subtle style difference (e.g. slightly dimmed text or an italicised name) helps distinguish departed players visually.
 
 ## Files Modified
 
