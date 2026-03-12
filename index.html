@@ -591,22 +591,28 @@
     }
 
     function showSettle(diffs, counts, lastWinner, winnerIdx) {
+        lastSettleData = { diffs, counts, lastWinner, winnerIdx };
         currentSettleWinnerIdx = winnerIdx;
         document.getElementById('last-winner-info').innerText = myIndex === winnerIdx ? '🏆 恭喜你是本局贏家!' : `🏆 贏家：${lastWinner}`;
         const list = document.getElementById('result-list'); list.innerHTML = '';
         for(let i=0; i<4; i++) {
             let wIdx = (i + myIndex) % 4;
-            list.innerHTML += `<div style="display:flex; justify-content:space-between; margin:5px 0;"><span>${names[wIdx]} (${counts[wIdx]} 墩)</span><span style="color:${diffs[wIdx]>=0?'#2ecc71':'#e74c3c'}">${diffs[wIdx]>=0?'+':''}${diffs[wIdx]}</span></div>`;
+            const label = vacant[wIdx] ? `${names[wIdx]} (已離場)` : names[wIdx];
+            list.innerHTML += `<div style="display:flex; justify-content:space-between; margin:5px 0;"><span>${label} (${counts[wIdx]} 墩)</span><span style="color:${diffs[wIdx]>=0?'#2ecc71':'#e74c3c'}">${diffs[wIdx]>=0?'+':''}${diffs[wIdx]}</span></div>`;
         }
-        
-        // 核心邏輯：判斷目前玩家是否為贏家
         const nextArea = document.getElementById('next-action-area');
-        if (myIndex === winnerIdx) {
+        const hasVacant = vacant.some(v => v);
+        if (hasVacant) {
+            const roomUrl = location.origin + location.pathname + '?room=' + (isHost ? peer.id : rid);
+            nextArea.innerHTML = `
+            <p style="margin-top:16px; color:var(--gold);">有玩家離場，等待新玩家加入後開始下一局</p>
+            <input type="text" readonly onclick="this.select()" value="${roomUrl}"
+                style="width:100%;padding:6px;font-size:11px;background:#34495e;color:white;border:1px solid #666;border-radius:6px;margin-top:8px;">`;
+        } else if (myIndex === winnerIdx) {
             nextArea.innerHTML = `<button onclick="requestNextGame()" style="margin-top:20px; width:100%; background:var(--gold); color:black;">🎲 由您擲骰決定下一局</button>`;
         } else {
             nextArea.innerHTML = `<p style="margin-top:20px; color:var(--gold);">等待贏家 ${lastWinner} 擲骰...</p>`;
         }
-        
         document.getElementById('settlement-overlay').style.display = 'flex';
     }
 
