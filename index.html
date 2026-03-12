@@ -292,9 +292,12 @@
 
     function createRoom() {
         if (isProcessing) return; isProcessing = true;
+        const btn = document.getElementById('btn-host');
+        btn.disabled = true; btn.innerText = '建立中...';
         const myName = document.getElementById('nick-in').value || "房主";
         localStorage.setItem('chess_nick', myName);
         peer = new Peer(); isHost = true;
+        peer.on('error', () => { isProcessing = false; btn.disabled = false; btn.innerText = '創建房間'; showToast('❌ 建立失敗，請重試'); });
         peer.on('open', (id) => {
             playerPeerIds[0] = id; names[0] = myName; myIndex = 0;
             document.getElementById('copy-url').value = location.origin + location.pathname + "?room=" + id;
@@ -325,12 +328,16 @@
 
     function joinRoomAction() {
         if (isProcessing) return; isProcessing = true;
+        const btn = document.getElementById('btn-join');
+        btn.disabled = true; btn.innerText = '連線中...';
         const myName = document.getElementById('nick-in').value || "玩家";
         localStorage.setItem('chess_nick', myName);
         localStorage.setItem(`chess_rejoin_${rid}`, JSON.stringify({ myName, myIndex: -1 }));
         peer = new Peer();
+        peer.on('error', () => { isProcessing = false; btn.disabled = false; btn.innerText = '加入遊戲'; showToast('❌ 連線失敗，請重試'); });
         peer.on('open', (id) => {
             hostConn = peer.connect(rid);
+            hostConn.on('error', () => { isProcessing = false; btn.disabled = false; btn.innerText = '加入遊戲'; showToast('❌ 無法連線至房間，請確認連結'); });
             hostConn.on('open', () => {
                 hostConn.send({type: 'JOIN', name: myName});
                 document.getElementById('lobby-init-name').style.display = 'none';
