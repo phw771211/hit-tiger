@@ -372,6 +372,8 @@
             document.getElementById('lobby').style.display = 'none';
             document.getElementById('main-table').style.display = 'block';
             showChatPanel();
+            isGameStarted = true;
+            if (myIndex > 0) document.getElementById('btn-leave').style.display = 'block';
             render();
         }
         if (data.type === 'FULL_STATE') {
@@ -386,6 +388,8 @@
             showChatPanel();
             document.getElementById('settlement-overlay').style.display = 'none';
             showToast('✅ 已重新連線');
+            isGameStarted = true;
+            if (myIndex > 0) document.getElementById('btn-leave').style.display = 'block';
             render();
         }
         if (data.type === 'SYNC') {
