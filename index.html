@@ -337,14 +337,17 @@
                             // Find first vacant guest seat (seats 1-3 only; seat 0 is host)
                             const vacantIdx = vacant.findIndex((v, i) => v && i > 0);
                             if (vacantIdx !== -1) {
+                                // Record departing player BEFORE overwriting seat state
+                                departureLedger.push({ name: names[vacantIdx], net: balances[vacantIdx] - buyIns[vacantIdx], balance: balances[vacantIdx], buyIn: buyIns[vacantIdx], seatIdx: vacantIdx });
                                 connections[vacantIdx - 1] = conn;
                                 names[vacantIdx] = d.name;
                                 vacant[vacantIdx] = false;
                                 disconnected[vacantIdx] = false;
+                                buyIns[vacantIdx] = balances[vacantIdx];
                                 conn.on('close', () => handleGuestDisconnect(vacantIdx));
                                 conn.on('error', () => handleGuestDisconnect(vacantIdx));
-                                conn.send({ type: 'FULL_STATE', index: vacantIdx, hands, balances, turn, currentCall, hasConfirmed, tableCards, trickHistory, names, roundWinners, vacant });
-                                broadcast({ type: 'SEAT_FILLED', idx: vacantIdx, name: d.name });
+                                conn.send({ type: 'FULL_STATE', index: vacantIdx, hands, balances, turn, currentCall, hasConfirmed, tableCards, trickHistory, names, roundWinners, vacant, departureLedger });
+                                broadcast({ type: 'SEAT_FILLED', idx: vacantIdx, name: d.name, buyIn: balances[vacantIdx], ledger: departureLedger });
                             } else {
                                 conn.send({ type: 'MSG', msg: '目前沒有空位，無法加入' });
                             }
