@@ -696,14 +696,47 @@
 
     function handleRejoin(conn, d) {
         const idx = d.prevIndex;
-        if (idx < 1 || idx > 3 || !names[idx]) return;
-        connections[idx - 1] = conn;
-        disconnected[idx] = false;
-        vacant[idx] = false;
-        conn.on('close', () => handleGuestDisconnect(idx));
-        conn.on('error', () => handleGuestDisconnect(idx));
-        conn.send({ type: 'FULL_STATE', index: idx, hands, balances, turn, currentCall, hasConfirmed, tableCards, trickHistory, names, roundWinners, vacant });
-        broadcast({ type: 'MSG', msg: `✅ ${names[idx]} 已重新連線` });
+        // Guard: invalid index, unknown player, or seat was never vacated
+        if (idx < 1 || idx > 3 || !names[idx] || !disconnected[idx]) return;
+
+        if (vacant[idx]) {
+            // Normal rejoin — original seat still vacant
+            connections[idx - 1] = conn;
+            disconnected[idx] = false;
+            vacant[idx] = false;
+            conn.on('close', () => handleGuestDisconnect(idx));
+            conn.on('error', () => handleGuestDisconnect(idx));
+            conn.send({ type: 'FULL_STATE', index: idx, hands, balances, turn, currentCall, hasConfirmed, tableCards, trickHistory, names, roundWinners, vacant, departureLedger });
+            broadcast({ type: 'SEAT_FILLED', idx, name: d.name, buyIn: buyIns[idx], ledger: departureLedger });
+        } else {
+            // Seat taken — find another vacant guest seat
+            const vacantSeat = vacant.findIndex((v, i) => v && i > 0);
+            if (vacantSeat === -1) {
+                conn.send({ type: 'MSG', msg: '目前沒有空位，無法加入' });
+                return;
+            }
+            // Retrieve returning player's saved data from ledger
+            const entry = departureLedger.find(e => e.seatIdx === idx);
+            if (!entry) {
+                conn.send({ type: 'MSG', msg: '無法找到玩家資料，無法加入' });
+                return;
+            }
+            // Record the player being displaced from vacantSeat to ledger
+            departureLedger.push({ name: names[vacantSeat], net: balances[vacantSeat] - buyIns[vacantSeat], balance: balances[vacantSeat], buyIn: buyIns[vacantSeat], seatIdx: vacantSeat });
+            // Remove returning player from ledger (they're back)
+            departureLedger = departureLedger.filter(e => e.seatIdx !== idx);
+            // Restore returning player to vacantSeat
+            names[vacantSeat] = d.name;
+            balances[vacantSeat] = entry.balance;
+            buyIns[vacantSeat] = entry.buyIn;
+            vacant[vacantSeat] = false;
+            disconnected[vacantSeat] = false;
+            connections[vacantSeat - 1] = conn;
+            conn.on('close', () => handleGuestDisconnect(vacantSeat));
+            conn.on('error', () => handleGuestDisconnect(vacantSeat));
+            conn.send({ type: 'FULL_STATE', index: vacantSeat, hands, balances, turn, currentCall, hasConfirmed, tableCards, trickHistory, names, roundWinners, vacant, departureLedger });
+            broadcast({ type: 'SEAT_FILLED', idx: vacantSeat, name: d.name, buyIn: entry.buyIn, ledger: departureLedger });
+        }
     }
 
     function scheduleReconnect() {
