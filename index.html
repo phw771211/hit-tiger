@@ -347,7 +347,7 @@
                                 conn.on('close', () => handleGuestDisconnect(vacantIdx));
                                 conn.on('error', () => handleGuestDisconnect(vacantIdx));
                                 conn.send({ type: 'FULL_STATE', index: vacantIdx, hands, balances, turn, currentCall, hasConfirmed, tableCards, trickHistory, names, roundWinners, vacant, departureLedger });
-                                broadcast({ type: 'SEAT_FILLED', idx: vacantIdx, name: d.name, buyIn: balances[vacantIdx], ledger: departureLedger });
+                                broadcast({ type: 'SEAT_FILLED', idx: vacantIdx, name: d.name, buyIn: buyIns[vacantIdx], ledger: departureLedger });
                             } else {
                                 conn.send({ type: 'MSG', msg: '目前沒有空位，無法加入' });
                             }
@@ -731,6 +731,7 @@
             buyIns[vacantSeat] = entry.buyIn;
             vacant[vacantSeat] = false;
             disconnected[vacantSeat] = false;
+            disconnected[idx] = false; // stop autoPlay on the original ghost seat
             connections[vacantSeat - 1] = conn;
             conn.on('close', () => handleGuestDisconnect(vacantSeat));
             conn.on('error', () => handleGuestDisconnect(vacantSeat));
