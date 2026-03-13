@@ -408,6 +408,7 @@
             tableCards = data.tableCards; trickHistory = data.trickHistory; names = data.names;
             roundWinners = data.roundWinners;
             vacant = data.vacant || [false, false, false, false];
+            departureLedger = data.departureLedger || [];
             if (currentCall === null) { state = (turn === myIndex) ? "MY_TURN" : "IDLE"; hideToast(); }
             else { state = hasConfirmed[myIndex] ? "WAITING" : "FOLLOWING"; showPersistentToast(`📢 目前牌型：${currentCall.count}張${currentCall.name}`); }
             document.getElementById('lobby').style.display = 'none';
@@ -485,7 +486,8 @@
             vacant[data.idx] = false;
             disconnected[data.idx] = false;
             names[data.idx] = data.name;
-            buyIns[data.idx] = balances[data.idx]; // new player's book starts here
+            buyIns[data.idx] = data.buyIn ?? balances[data.idx];
+            departureLedger = data.ledger || departureLedger;
             showToast(`${data.name} 已加入遊戲`);
             render();
             if (lastSettleData && document.getElementById('settlement-overlay').style.display === 'flex') {
