@@ -482,6 +482,11 @@
             showToast(`${leavingName} 已離開遊戲，系統代打`);
             render();
         }
+        if (data.type === 'PLAYER_DISCONNECTED') {
+            disconnected[data.idx] = true;
+            showToast(`⚠️ ${names[data.idx]} 連線中斷，自動代打中...`);
+            render();
+        }
         if (data.type === 'SEAT_FILLED') {
             vacant[data.idx] = false;
             disconnected[data.idx] = false;
@@ -522,6 +527,9 @@
             currentCall = {...pat, count: cards.length, callerIdx: idx};
             startTimerHost(); serverSyncLocal();
             for (let i = 0; i < 4; i++) if (disconnected[i] && i !== idx) autoPlayForDisconnected(i);
+            if (hands.every(h => h.length === currentCall.count)) {
+                setTimeout(() => { for (let i = 0; i < 4; i++) if (!hasConfirmed[i]) serverReceiveAction(i, hands[i]); }, 5000);
+            }
         }
         if (hasConfirmed.every(v => v === true)) { clearInterval(timerInterval); serverProcessBattle(); }
     }
@@ -579,7 +587,7 @@
             document.getElementById(`name-${i}`).innerText = names[wIdx] || "等待中";
             document.getElementById(`area-${i}`).classList.toggle('active-glow', wIdx === turn);
             document.getElementById(`bal-${i}`).innerText = `$${balances[wIdx]}`;
-            document.getElementById(`status-${i}`).innerText = (wIdx === turn && !currentCall) ? "叫牌中" : (currentCall && !hasConfirmed[wIdx]) ? "跟牌中" : (hasConfirmed[wIdx]) ? "✓ 已就緒" : "";
+            document.getElementById(`status-${i}`).innerText = disconnected[wIdx] ? (vacant[wIdx] ? "已離場" : "⚠️ 斷線") : ((wIdx === turn && !currentCall) ? "叫牌中" : (currentCall && !hasConfirmed[wIdx]) ? "跟牌中" : (hasConfirmed[wIdx]) ? "✓ 已就緒" : "");
             const h = document.getElementById(`h-${i}`); h.innerHTML = '';
             if (wIdx === myIndex) {
                 hands[wIdx].forEach(c => {
@@ -683,7 +691,7 @@
     function handleGuestDisconnect(idx) {
         if (disconnected[idx]) return;
         disconnected[idx] = true;
-        broadcast({ type: 'MSG', msg: `⚠️ ${names[idx]} 連線中斷，自動代打中...` });
+        broadcast({ type: 'PLAYER_DISCONNECTED', idx });
         autoPlayForDisconnected(idx);
     }
 
@@ -696,11 +704,12 @@
 
     function handleRejoin(conn, d) {
         const idx = d.prevIndex;
-        // Guard: invalid index, unknown player, or seat was never vacated
-        if (idx < 1 || idx > 3 || !names[idx] || !disconnected[idx]) return;
+        const ledgerEntry = departureLedger.find(e => e.seatIdx === idx);
+        // Guard: invalid index, unknown player, and neither disconnected nor in ledger
+        if (idx < 1 || idx > 3 || !names[idx] || (!disconnected[idx] && !ledgerEntry)) return;
 
-        if (vacant[idx]) {
-            // Normal rejoin — original seat still vacant
+        if (!ledgerEntry) {
+            // Normal rejoin — seat is still theirs (vacant or involuntary disconnect)
             connections[idx - 1] = conn;
             disconnected[idx] = false;
             vacant[idx] = false;
@@ -709,16 +718,10 @@
             conn.send({ type: 'FULL_STATE', index: idx, hands, balances, turn, currentCall, hasConfirmed, tableCards, trickHistory, names, roundWinners, vacant, departureLedger });
             broadcast({ type: 'SEAT_FILLED', idx, name: d.name, buyIn: buyIns[idx], ledger: departureLedger });
         } else {
-            // Seat taken — find another vacant guest seat
+            // Seat permanently taken — find another vacant guest seat
             const vacantSeat = vacant.findIndex((v, i) => v && i > 0);
             if (vacantSeat === -1) {
                 conn.send({ type: 'MSG', msg: '目前沒有空位，無法加入' });
-                return;
-            }
-            // Retrieve returning player's saved data from ledger
-            const entry = departureLedger.find(e => e.seatIdx === idx);
-            if (!entry) {
-                conn.send({ type: 'MSG', msg: '無法找到玩家資料，無法加入' });
                 return;
             }
             // Record the player being displaced from vacantSeat to ledger
@@ -727,16 +730,15 @@
             departureLedger = departureLedger.filter(e => e.seatIdx !== idx);
             // Restore returning player to vacantSeat
             names[vacantSeat] = d.name;
-            balances[vacantSeat] = entry.balance;
-            buyIns[vacantSeat] = entry.buyIn;
+            balances[vacantSeat] = ledgerEntry.balance;
+            buyIns[vacantSeat] = ledgerEntry.buyIn;
             vacant[vacantSeat] = false;
             disconnected[vacantSeat] = false;
-            disconnected[idx] = false; // stop autoPlay on the original ghost seat
             connections[vacantSeat - 1] = conn;
             conn.on('close', () => handleGuestDisconnect(vacantSeat));
             conn.on('error', () => handleGuestDisconnect(vacantSeat));
             conn.send({ type: 'FULL_STATE', index: vacantSeat, hands, balances, turn, currentCall, hasConfirmed, tableCards, trickHistory, names, roundWinners, vacant, departureLedger });
-            broadcast({ type: 'SEAT_FILLED', idx: vacantSeat, name: d.name, buyIn: entry.buyIn, ledger: departureLedger });
+            broadcast({ type: 'SEAT_FILLED', idx: vacantSeat, name: d.name, buyIn: ledgerEntry.buyIn, ledger: departureLedger });
         }
     }
 
