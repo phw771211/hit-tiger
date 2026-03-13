@@ -282,6 +282,7 @@
     let isProcessing = false, timerInterval = null;
     let disconnected = [false, false, false, false], reconnectTimer = null;
     let vacant = [false, false, false, false];
+    let departureLedger = []; // [{name, net, balance, buyIn, seatIdx}]
     let isGameStarted = false;
     let lastSettleData = null; // cached for re-render when SEAT_FILLED arrives
 
